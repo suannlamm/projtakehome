@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { Status } from "@/lib/queries";
+import { Stars } from "@/components/ui";
 
 // Small interactive widgets. Each calls the /api routes, then refreshes the server-rendered page.
 
@@ -30,49 +32,68 @@ export function SearchInput({ initial }: { initial: string }) {
   return <input autoFocus className="input" placeholder="Search for a film..." value={q} onChange={(e) => setQ(e.target.value)} />;
 }
 
-export function WatchlistButton({ movieId, onWatchlist }: { movieId: number; onWatchlist: boolean }) {
+// Add to watchlist / mark watched / remove. Keeps its own status so it also works on the
+// client-rendered taste profile page, where a refresh doesn't re-render it.
+export function ListButtons({ movieId, status: initial }: { movieId: number; status: Status }) {
   const router = useRouter();
+  const [status, setStatus] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function toggle() {
+  async function update(next: Status) {
+    if (next === null && status === "watched" && !confirm("Remove this film? Its rating will be deleted too.")) return;
     setBusy(true);
-    const err = await callApi(onWatchlist ? "DELETE" : "PUT", `/api/watchlist/${movieId}`);
-    setError(err);
+    const err = await callApi(
+      next === null ? "DELETE" : "PUT",
+      `/api/watchlist/${movieId}`,
+      next === "watched" ? { watched: true } : undefined,
+    );
     setBusy(false);
-    if (!err) router.refresh();
+    setError(err);
+    if (err) return;
+    setStatus(next);
+    router.refresh();
   }
 
   return (
     <div>
-      <button className={onWatchlist ? "btn-ghost" : "btn"} disabled={busy} onClick={toggle}>
-        {onWatchlist ? "✓ On watchlist" : "+ Add to watchlist"}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        {status === null && (
+          <button className="btn" disabled={busy} onClick={() => update("to_watch")}>
+            + Watchlist
+          </button>
+        )}
+        {status !== "watched" && (
+          <button className="btn-ghost" disabled={busy} onClick={() => update("watched")}>
+            ✓ Watched
+          </button>
+        )}
+        {status !== null && (
+          <button className="btn-ghost" disabled={busy} onClick={() => update(null)}>
+            Remove
+          </button>
+        )}
+      </div>
       {error && <p className="mt-1 text-sm text-red-400">{error}</p>}
     </div>
   );
 }
 
-type Review = { rating: number; body: string | null; isPublic: boolean; watchedOn: string | null };
+type Review = { rating: number; body: string | null; isPublic: boolean };
 
 export function ReviewForm({ movieId, existing }: { movieId: number; existing: Review | null }) {
   const router = useRouter();
   const [rating, setRating] = useState(existing?.rating ?? 0);
   const [body, setBody] = useState(existing?.body ?? "");
   const [isPublic, setIsPublic] = useState(existing?.isPublic ?? true);
-  const [watchedOn, setWatchedOn] = useState(existing?.watchedOn ?? "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   async function submit(method: "PUT" | "DELETE") {
     setBusy(true);
-    const err = await callApi(
-      method,
-      `/api/reviews/${movieId}`,
-      method === "PUT" ? { rating, body, isPublic, watchedOn: watchedOn || null } : undefined,
-    );
+    const err = await callApi(method, `/api/reviews/${movieId}`, method === "PUT" ? { rating, body, isPublic } : undefined);
     setBusy(false);
-    setMessage(err ?? (method === "PUT" ? "Saved" : "Review deleted"));
+    setMessage(err ?? (method === "PUT" ? "Saved" : "Rating deleted"));
     if (!err && method === "DELETE") {
       setRating(0);
       setBody("");
@@ -88,19 +109,24 @@ export function ReviewForm({ movieId, existing }: { movieId: number; existing: R
         submit("PUT");
       }}
     >
-      <h2 className="font-semibold">{existing ? "Your review" : "Rate this film"}</h2>
-      <div className="flex gap-1 text-2xl">
-        {[1, 2, 3, 4, 5].map((n) => (
+      <h2 className="font-semibold">{existing ? "Your rating" : "Rate this film"}</h2>
+      <div className="flex flex-wrap items-center gap-1">
+        {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
           <button
             key={n}
             type="button"
-            aria-label={`${n} stars`}
-            className={n <= rating ? "text-amber-400" : "text-zinc-600 hover:text-zinc-400"}
+            aria-label={`${n} out of 10`}
+            className={`h-8 w-8 rounded text-sm ${n <= rating ? "bg-amber-500 text-zinc-950" : "bg-zinc-800 hover:bg-zinc-700"}`}
             onClick={() => setRating(n)}
           >
-            ★
+            {n}
           </button>
         ))}
+        {rating > 0 && (
+          <span className="ml-2 text-xl">
+            <Stars rating={rating} />
+          </span>
+        )}
       </div>
       <textarea
         className="input min-h-24"
@@ -109,23 +135,17 @@ export function ReviewForm({ movieId, existing }: { movieId: number; existing: R
         value={body}
         onChange={(e) => setBody(e.target.value)}
       />
-      <div className="flex flex-wrap items-center gap-4 text-sm">
-        <label className="flex items-center gap-2">
-          Watched on
-          <input type="date" className="input w-auto" value={watchedOn} onChange={(e) => setWatchedOn(e.target.value)} />
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
-          Public (visible to other users)
-        </label>
-      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
+        Visible to your followers
+      </label>
       <div className="flex items-center gap-2">
         <button className="btn" disabled={busy || rating === 0}>
           Save
         </button>
         {existing && (
           <button type="button" className="btn-ghost" disabled={busy} onClick={() => submit("DELETE")}>
-            Delete
+            Delete rating
           </button>
         )}
         {message && <span className="text-sm text-zinc-400">{message}</span>}
@@ -153,9 +173,10 @@ export function FollowButton({ username, isFollowing }: { username: string; isFo
   );
 }
 
-export function UsernameForm() {
+export function ProfileForm() {
   const router = useRouter();
   const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -165,7 +186,7 @@ export function UsernameForm() {
       onSubmit={async (e) => {
         e.preventDefault();
         setBusy(true);
-        const err = await callApi("PATCH", "/api/profile", { username });
+        const err = await callApi("PATCH", "/api/profile", { username, displayName });
         setBusy(false);
         setError(err);
         if (!err) {
@@ -174,7 +195,14 @@ export function UsernameForm() {
         }
       }}
     >
-      <input className="input" placeholder="username" value={username} onChange={(e) => setUsername(e.target.value)} />
+      <input className="input" placeholder="handle" value={username} onChange={(e) => setUsername(e.target.value)} />
+      <input
+        className="input"
+        placeholder="Display name (optional)"
+        maxLength={50}
+        value={displayName}
+        onChange={(e) => setDisplayName(e.target.value)}
+      />
       {error && <p className="text-sm text-red-400">{error}</p>}
       <button className="btn" disabled={busy}>
         Continue

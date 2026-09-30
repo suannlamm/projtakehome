@@ -53,7 +53,15 @@ DIRECT_URL=postgresql://postgres.abcdefghijkl:PASSWORD@aws-0-eu-west-2.pooler.su
 npm run db:migrate
 ```
 
-This applies [drizzle/0000_init.sql](drizzle/0000_init.sql) (all tables, keys and indexes) and [drizzle/0001_auth_trigger_rls.sql](drizzle/0001_auth_trigger_rls.sql) (the trigger that creates a profile on sign-up, plus RLS). Check in Supabase → **Table Editor** that 8 tables exist.
+This applies everything in [drizzle/](drizzle/): the tables, keys and indexes, the trigger that creates a profile on sign-up, and RLS. Check in Supabase → **Table Editor** that 7 tables exist.
+
+**Then add the mock members:**
+
+```
+npm run db:seed
+```
+
+This creates five members who all follow each other: `sam`, `mira`, `jordan` and `priya` with watch histories, and an empty `demo` account to sign in with (`demo@example.com` / `reel-demo-2026`). It's safe to run again.
 
 ## 3. TMDB → `TMDB_API_TOKEN`
 
@@ -121,10 +129,11 @@ Email/password works out of the box: **Authentication → Sign In / Providers �
 ```
 npm install
 npm run db:migrate
+npm run db:seed
 npm run dev
 ```
 
-Open http://localhost:3000, sign up, choose a username, search for a film, and rate it.
+Open http://localhost:3000 and sign in as `demo@example.com` / `reel-demo-2026`, or sign up and choose a handle.
 
 ## Deploy to Vercel
 

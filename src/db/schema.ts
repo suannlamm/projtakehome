@@ -3,9 +3,9 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
-  jsonb,
   pgTable,
   primaryKey,
   smallint,
@@ -18,12 +18,13 @@ import { authUsers } from "drizzle-orm/supabase";
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
 // One row per Supabase auth user, created by the on_auth_user_created trigger.
-// username stays null until the user picks one on /onboarding.
+// username (the public handle) stays null until the user picks one on /onboarding.
 export const profiles = pgTable(
   "profiles",
   {
     id: uuid("id").primaryKey().references(() => authUsers.id, { onDelete: "cascade" }),
     username: text("username").unique(),
+    displayName: text("display_name"),
     createdAt: createdAt(),
   },
   (t) => [check("profiles_username_format", sql`${t.username} ~ '^[a-z0-9_]{3,20}$'`)],
@@ -53,33 +54,37 @@ export const movieGenres = pgTable(
   (t) => [primaryKey({ columns: [t.movieId, t.genreId] })],
 );
 
+// A user's films: "to watch" while watched_at is null, "watched" once it's set.
 export const watchlist = pgTable(
   "watchlist",
   {
     userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
     movieId: integer("movie_id").notNull().references(() => movies.id),
     addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+    watchedAt: timestamp("watched_at", { withTimezone: true }),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.movieId] })],
+  (t) => [primaryKey({ columns: [t.userId, t.movieId] }), index("watchlist_movie_id_idx").on(t.movieId)],
 );
 
-// Independent of the watchlist: a film can be rated without ever being watchlisted.
+// A rating (and optional review) of a watched film. The foreign key onto watchlist means a review
+// can't exist without its watchlist row, and removing the film from the list removes the review.
 export const reviews = pgTable(
   "reviews",
   {
-    userId: uuid("user_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
-    movieId: integer("movie_id").notNull().references(() => movies.id),
+    userId: uuid("user_id").notNull(),
+    movieId: integer("movie_id").notNull(),
     rating: smallint("rating").notNull(),
     body: text("body"),
     isPublic: boolean("is_public").notNull().default(true),
-    watchedOn: date("watched_on"),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     primaryKey({ columns: [t.userId, t.movieId] }),
-    check("reviews_rating_range", sql`${t.rating} between 1 and 5`),
-    index("reviews_movie_id_idx").on(t.movieId),
+    foreignKey({ columns: [t.userId, t.movieId], foreignColumns: [watchlist.userId, watchlist.movieId] }).onDelete(
+      "cascade",
+    ),
+    check("reviews_rating_range", sql`${t.rating} between 1 and 10`),
   ],
 );
 
@@ -96,16 +101,3 @@ export const follows = pgTable(
     index("follows_followee_id_idx").on(t.followeeId),
   ],
 );
-
-export type Recommendations = {
-  tasteProfile: string;
-  picks: { movieId: number; title: string; posterPath: string | null; year: string; reason: string }[];
-};
-
-// Latest AI recommendations per user, reused while their rating history hash is unchanged.
-export const recommendationCache = pgTable("recommendation_cache", {
-  userId: uuid("user_id").primaryKey().references(() => profiles.id, { onDelete: "cascade" }),
-  historyHash: text("history_hash").notNull(),
-  payload: jsonb("payload").$type<Recommendations>().notNull(),
-  createdAt: createdAt(),
-});

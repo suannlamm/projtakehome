@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { profiles, reviews, watchlist } from "@/db/schema";
+import { reviews, watchlist } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { getFeed } from "@/lib/queries";
 import { tmdb, type TmdbMovie } from "@/lib/tmdb";
-import { ReviewForm, WatchlistButton } from "@/components/actions";
+import { ListButtons, ReviewForm } from "@/components/actions";
 import { Poster, Stars } from "@/components/ui";
 
 export default async function MoviePage({ params }: { params: Promise<{ id: string }> }) {
@@ -18,23 +19,13 @@ export default async function MoviePage({ params }: { params: Promise<{ id: stri
   const movie = await tmdb<TmdbMovie & { runtime: number | null }>(`/movie/${id}`);
   if (!movie) notFound();
 
-  const [[onWatchlist], [myReview], otherReviews] = await Promise.all([
+  const [[mine], friends] = await Promise.all([
     db
-      .select({ movieId: watchlist.movieId })
+      .select({ watchedAt: watchlist.watchedAt, rating: reviews.rating, body: reviews.body, isPublic: reviews.isPublic })
       .from(watchlist)
+      .leftJoin(reviews, and(eq(reviews.userId, watchlist.userId), eq(reviews.movieId, watchlist.movieId)))
       .where(and(eq(watchlist.userId, user.id), eq(watchlist.movieId, id))),
-    db
-      .select({ rating: reviews.rating, body: reviews.body, isPublic: reviews.isPublic, watchedOn: reviews.watchedOn })
-      .from(reviews)
-      .where(and(eq(reviews.userId, user.id), eq(reviews.movieId, id))),
-    // Other people's reviews: public only, and identified by username, never id.
-    db
-      .select({ username: profiles.username, rating: reviews.rating, body: reviews.body, updatedAt: reviews.updatedAt })
-      .from(reviews)
-      .innerJoin(profiles, eq(profiles.id, reviews.userId))
-      .where(and(eq(reviews.movieId, id), eq(reviews.isPublic, true), ne(reviews.userId, user.id)))
-      .orderBy(desc(reviews.updatedAt))
-      .limit(50),
+    getFeed(user.id, id),
   ]);
 
   return (
@@ -52,25 +43,30 @@ export default async function MoviePage({ params }: { params: Promise<{ id: stri
             {movie.runtime ? ` · ${movie.runtime} min` : ""}
           </p>
           <p className="text-zinc-300">{movie.overview}</p>
-          <WatchlistButton movieId={id} onWatchlist={Boolean(onWatchlist)} />
+          <ListButtons movieId={id} status={mine ? (mine.watchedAt ? "watched" : "to_watch") : null} />
         </div>
       </div>
 
-      <ReviewForm movieId={id} existing={myReview ?? null} />
+      <ReviewForm
+        movieId={id}
+        existing={mine?.rating ? { rating: mine.rating, body: mine.body, isPublic: mine.isPublic ?? true } : null}
+      />
 
       <section>
-        <h2 className="mb-3 text-lg font-semibold">Reviews from others</h2>
-        {otherReviews.length === 0 ? (
-          <p className="text-sm text-zinc-400">No public reviews yet.</p>
+        <h2 className="mb-3 text-lg font-semibold">Friends who watched this</h2>
+        {friends.length === 0 ? (
+          <p className="text-sm text-zinc-400">No one you follow has watched this yet.</p>
         ) : (
           <ul className="space-y-3">
-            {otherReviews.map((r) => (
-              <li key={r.username} className="rounded-lg border border-zinc-800 p-4">
+            {friends.map((f) => (
+              <li key={f.username} className="rounded-lg border border-zinc-800 p-4">
                 <p className="text-sm">
-                  <Link href={`/u/${r.username}`} className="font-semibold hover:text-amber-400">@{r.username}</Link>{" "}
-                  <Stars rating={r.rating} />
+                  <Link href={`/u/${f.username}`} className="font-semibold hover:text-amber-400">
+                    {f.displayName ?? `@${f.username}`}
+                  </Link>{" "}
+                  {f.rating ? <Stars rating={f.rating} /> : <span className="text-zinc-500">watched</span>}
                 </p>
-                {r.body && <p className="mt-2 whitespace-pre-line text-sm text-zinc-300">{r.body}</p>}
+                {f.body && <p className="mt-2 whitespace-pre-line text-sm text-zinc-300">{f.body}</p>}
               </li>
             ))}
           </ul>

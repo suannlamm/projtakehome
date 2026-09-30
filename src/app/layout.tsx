@@ -15,14 +15,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en">
       <body>
         <header className="border-b border-zinc-800">
-          <nav className="mx-auto flex max-w-5xl items-center gap-5 px-4 py-3 text-sm">
+          <nav className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3 text-sm">
             <Link href="/" className="text-lg font-bold text-amber-400">
               Reel
             </Link>
             {user ? (
               <>
-                <Link href="/search" className="hover:text-amber-400">Search</Link>
-                <Link href="/recommendations" className="hover:text-amber-400">For you</Link>
+                <Link href="/watchlist" className="hover:text-amber-400">Watchlist</Link>
+                <Link href="/stats" className="hover:text-amber-400">Stats</Link>
+                <Link href="/recommendations" className="hover:text-amber-400">Taste profile</Link>
+                <Link href="/activity" className="hover:text-amber-400">Activity</Link>
                 {user.username && (
                   <Link href={`/u/${user.username}`} className="hover:text-amber-400">@{user.username}</Link>
                 )}

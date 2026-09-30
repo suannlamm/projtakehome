@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { and, eq, ne } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { profiles } from "@/db/schema";
@@ -10,22 +10,28 @@ const profileSchema = z.object({
     .string()
     .trim()
     .toLowerCase()
-    .regex(/^[a-z0-9_]{3,20}$/, "3-20 characters: letters, numbers or underscores"),
+    .regex(/^[a-z0-9_]{3,20}$/, "Handle must be 3-20 characters: letters, numbers or underscores"),
+  displayName: z.string().trim().max(50, "Display name must be 50 characters or fewer").nullish(),
 });
 
-// Sets the current user's username (used by /onboarding).
+// Sets the current user's handle and display name (used by /onboarding).
+// Handles are unique; a taken one returns 409 so the user can pick another.
 export const profileRoutes = new Hono<Env>().patch("/", async (c) => {
   const parsed = profileSchema.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid username" }, 400);
+  if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid profile" }, 400);
 
-  const userId = c.get("userId");
-  const { username } = parsed.data;
-  const [taken] = await db
-    .select({ id: profiles.id })
-    .from(profiles)
-    .where(and(eq(profiles.username, username), ne(profiles.id, userId)));
-  if (taken) return c.json({ error: "That username is taken" }, 409);
-
-  await db.update(profiles).set({ username }).where(eq(profiles.id, userId));
+  const { username, displayName } = parsed.data;
+  try {
+    await db
+      .update(profiles)
+      .set({ username, displayName: displayName || null })
+      .where(eq(profiles.id, c.get("userId")));
+  } catch (err) {
+    // 23505 = unique_violation: the database, not a prior check, decides who gets a handle.
+    if ((err as { cause?: { code?: string } }).cause?.code === "23505") {
+      return c.json({ error: "That handle is taken" }, 409);
+    }
+    throw err;
+  }
   return c.json({ username });
 });
