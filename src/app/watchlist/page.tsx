@@ -3,8 +3,8 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { movies, reviews, watchlist } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { ListButtons } from "@/components/actions";
-import { MovieCard, Stars } from "@/components/ui";
+import { ListButtons, WatchedEntry } from "@/components/actions";
+import { MovieCard } from "@/components/ui";
 
 export default async function WatchlistPage() {
   const user = await requireUser();
@@ -15,6 +15,8 @@ export default async function WatchlistPage() {
       posterPath: movies.posterPath,
       watchedAt: watchlist.watchedAt,
       rating: reviews.rating,
+      body: reviews.body,
+      isPublic: reviews.isPublic,
     })
     .from(watchlist)
     .innerJoin(movies, eq(movies.id, watchlist.movieId))
@@ -28,13 +30,13 @@ export default async function WatchlistPage() {
   return (
     <div className="space-y-10">
       <section>
-        <h1 className="mb-4 text-2xl font-bold">To watch ({toWatch.length})</h1>
+        <h1 className="mb-4 text-2xl font-bold">Watchlist ({toWatch.length})</h1>
         {toWatch.length === 0 ? (
           <p className="text-sm text-zinc-400">
-            Nothing here. <Link href="/" className="text-amber-400">Search for a film</Link> to add one.
+            Nothing here. <Link href="/search" className="text-amber-400">Search for a film</Link> to add one.
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-6">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-5">
             {toWatch.map((r) => (
               <div key={r.movieId} className="space-y-2">
                 <MovieCard id={r.movieId} title={r.title} posterPath={r.posterPath} />
@@ -48,21 +50,13 @@ export default async function WatchlistPage() {
       <section>
         <h2 className="mb-4 text-2xl font-bold">Watched ({watched.length})</h2>
         {watched.length === 0 ? (
-          <p className="text-sm text-zinc-400">Films you mark as watched show up here, ready to rate.</p>
+          <p className="text-sm text-zinc-400">Films you mark as watched move here, ready to rate.</p>
         ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-6">
+          <ul className="space-y-3">
             {watched.map((r) => (
-              <div key={r.movieId} className="space-y-2">
-                <MovieCard id={r.movieId} title={r.title} posterPath={r.posterPath} />
-                {r.rating ? (
-                  <Stars rating={r.rating} />
-                ) : (
-                  <Link href={`/movie/${r.movieId}`} className="block text-sm text-amber-400">Rate it →</Link>
-                )}
-                <ListButtons movieId={r.movieId} status="watched" />
-              </div>
+              <WatchedEntry key={r.movieId} film={r} />
             ))}
-          </div>
+          </ul>
         )}
       </section>
     </div>
