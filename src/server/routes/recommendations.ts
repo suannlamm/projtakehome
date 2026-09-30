@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { generateText, Output } from "ai";
+import { APICallError, generateText, Output } from "ai";
 import { google } from "@ai-sdk/google";
 import { z } from "zod";
 import { getCandidates, getWatchedHistory } from "@/lib/queries";
@@ -29,6 +29,8 @@ export const recommendationRoutes = new Hono<Env>().post("/", async (c) => {
   try {
     ({ output } = await generateText({
       model: google("gemini-3.8-flash"),
+      // One click = one request: retries burn the free tier's small per-minute and per-day quota.
+      maxRetries: 0,
       output: Output.object({
         schema: z.object({
           tasteProfile: z.string().describe("1-2 sentences describing the user's taste, addressed to them as 'you'"),
@@ -59,6 +61,9 @@ export const recommendationRoutes = new Hono<Env>().post("/", async (c) => {
     }));
   } catch (err) {
     console.error(err);
+    if (APICallError.isInstance(err) && err.statusCode === 429) {
+      return c.json({ error: "The AI usage limit has been reached. Try again later." }, 429);
+    }
     return c.json({ error: "The AI service is unavailable right now. Try again in a minute." }, 503);
   }
 
