@@ -28,7 +28,7 @@ export const recommendationRoutes = new Hono<Env>().post("/", async (c) => {
   let output: { tasteProfile: string; picks: { tmdbId: number; reason: string }[] };
   try {
     ({ output } = await generateText({
-      model: google("gemini-flash-latest"),
+      model: google("gemini-2.0-flash"),
       output: Output.object({
         schema: z.object({
           tasteProfile: z.string().describe("1-2 sentences describing the user's taste, addressed to them as 'you'"),
