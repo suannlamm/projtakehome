@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { getCurrentUser, requireUser } from "@/lib/auth";
 import { getCandidates, getPosterInfo, getWatchedHistory } from "@/lib/queries";
+import { SearchButton } from "@/components/actions";
 import { MovieCard } from "@/components/ui";
 
 export default async function HomePage() {
@@ -18,9 +19,9 @@ export default async function HomePage() {
   const user = await requireUser();
   return (
     <div className="flex flex-col items-center gap-12 pt-[12vh]">
-      <form action="/search" className="w-full max-w-xl">
-        <input name="q" required autoFocus className="input py-3 text-base" placeholder="Search for a film..." />
-      </form>
+      <div className="w-full max-w-xl">
+        <SearchButton bar />
+      </div>
       <Suspense fallback={<RowSkeleton />}>
         <ForYou userId={user.id} />
       </Suspense>

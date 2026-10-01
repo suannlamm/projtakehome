@@ -15,7 +15,7 @@ For setup, see **[SETUP.md](SETUP.md)**. It lists every key and dashboard settin
 | Page | What it does |
 |---|---|
 | `/` | Search bar, plus a row of recommendations once you've watched one film |
-| `/search` | TMDB results as a poster grid: add to watchlist or mark watched, and see which friends watched each film |
+| (every page) | The search icon at the top right opens search over the current page: by film title, director or actor. Add to watchlist or mark watched from the results, and see which friends watched each film |
 | `/watchlist` | Watchlist on top (tick to remove, mark watched); Watched below, with your rating, a review preview, a pen to edit and a bin to remove |
 | `/movie/:id` | Details, your rating and review (read-only until you click the pen), friends who watched it |
 | `/stats` | Films watched, films rated, average rating, count per genre across watched films |
@@ -53,6 +53,7 @@ All routes except `/api/health` return **401** when signed out. That check lives
 | PUT / DELETE | `/api/reviews/:movieId` | rate (and marks watched) / delete rating: `{ rating 1-10, body?, isPublic }` |
 | PUT / DELETE | `/api/follows/:handle` | follow (a request if they're private) / unfollow or cancel the request (idempotent, can't target yourself) |
 | PUT / DELETE | `/api/followers/:handle` | accept / decline someone's request to follow you |
+| GET | `/api/search?q=` | films by title, plus the films of the best-matching director or actor |
 | GET | `/api/users?q=` | find members by handle or display name |
 | GET | `/api/users/:handle` | profile; stats and watched films only if you follow them |
 | GET | `/api/feed` | recent watches and ratings from people you follow |
@@ -90,6 +91,7 @@ All routes except `/api/health` return **401** when signed out. That check lives
 - A member's "to watch" list is private; followers see what they've watched and their public ratings.
 - A rating can be marked "not visible to followers": it still counts in your own stats, but not in the stats others see.
 - The feed shows watched and rated films, not "added to watchlist".
+- Search shows people's films only for a reasonably well-known director or actor (TMDB popularity of at least 1), and not when the query is a film's exact title.
 - The taste profile is generated on demand (not cached), and needs at least one watched film.
 - Handles are unique, lowercase, 3-20 characters; a taken handle is rejected and the user picks another.
 - Accounts are public by default. Making an account private doesn't remove existing followers.

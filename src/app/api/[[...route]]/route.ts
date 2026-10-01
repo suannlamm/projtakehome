@@ -9,6 +9,7 @@ import { followerRoutes, followRoutes } from "@/server/routes/follows";
 import { profileRoutes } from "@/server/routes/profile";
 import { recommendationRoutes } from "@/server/routes/recommendations";
 import { reviewRoutes } from "@/server/routes/reviews";
+import { searchRoutes } from "@/server/routes/search";
 import { userRoutes } from "@/server/routes/users";
 import { watchlistRoutes } from "@/server/routes/watchlist";
 
@@ -31,6 +32,7 @@ app.use("*", async (c, next) => {
   await next();
 });
 
+app.route("/search", searchRoutes);
 app.route("/watchlist", watchlistRoutes);
 app.route("/reviews", reviewRoutes);
 app.route("/follows", followRoutes);

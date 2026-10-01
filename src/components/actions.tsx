@@ -40,7 +40,6 @@ export async function callApi(method: string, url: string, body?: unknown) {
 export function NavLinks() {
   const pathname = usePathname();
   const links: [string, string, LucideIcon][] = [
-    ["/search", "Search", Search],
     ["/watchlist", "Watchlist", Bookmark],
     ["/stats", "Stats", ChartColumn],
     ["/recommendations", "Taste profile", Sparkles],
@@ -73,7 +72,7 @@ export function UserMenu({ username }: { username: string | null }) {
   const item = "flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-zinc-800";
 
   return (
-    <div ref={ref} className="relative ml-auto">
+    <div ref={ref} className="relative">
       <button className={`tab ${active ? "tab-active" : ""}`} aria-expanded={open} onClick={() => setOpen(!open)}>
         <User size={16} />
         {username ? `@${username}` : "Account"}
@@ -100,18 +99,118 @@ export function UserMenu({ username }: { username: string | null }) {
   );
 }
 
-export function SearchInput({ initial }: { initial: string }) {
-  const router = useRouter();
-  const [q, setQ] = useState(initial);
+// Opens search over the current page: the icon in the header, or (bar) the big search bar on the home page.
+export function SearchButton({ bar = false }: { bar?: boolean }) {
+  const [open, setOpen] = useState(false);
 
-  // Debounced: the URL (and so the server-rendered results) updates 300ms after typing stops.
+  return (
+    <>
+      {bar ? (
+        <button className="input flex items-center gap-2 py-3 text-base text-zinc-400" onClick={() => setOpen(true)}>
+          <Search size={18} /> Search films, directors or actors...
+        </button>
+      ) : (
+        <button className="tab" aria-label="Search" title="Search" onClick={() => setOpen(true)}>
+          <Search size={18} />
+        </button>
+      )}
+      {open && <SearchPanel onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+type SearchResults = {
+  sections: {
+    label: string;
+    films: { id: number; title: string; posterPath: string | null; year: string; status: Status; friends: string[] }[];
+  }[];
+};
+
+function SearchPanel({ onClose }: { onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<SearchResults | { error: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Debounced: searches 300ms after typing stops, and drops the response to any older query.
   useEffect(() => {
-    if (q === initial) return;
-    const t = setTimeout(() => router.replace(`/search?q=${encodeURIComponent(q.trim())}`), 300);
-    return () => clearTimeout(t);
-  }, [q, initial, router]);
+    const query = q.trim();
+    if (query.length < 2) {
+      setResults(null);
+      setLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    const t = setTimeout(() => {
+      setLoading(true);
+      fetch(`/api/search?q=${encodeURIComponent(query)}`, { signal: controller.signal })
+        .then(async (res) => {
+          const data = await res.json();
+          setResults(res.ok ? data : { error: data.error ?? "Search failed" });
+        })
+        .catch(() => !controller.signal.aborted && setResults({ error: "Search failed. Try again." }))
+        .finally(() => !controller.signal.aborted && setLoading(false));
+    }, 300);
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+  }, [q]);
 
-  return <input autoFocus className="input" placeholder="Search for a film..." value={q} onChange={(e) => setQ(e.target.value)} />;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-20 bg-black/60 px-4 pt-16" onClick={onClose}>
+      <div
+        className="mx-auto max-w-2xl space-y-4 rounded-lg border border-zinc-800 bg-zinc-900 p-4 text-left"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <input
+          autoFocus
+          className="input"
+          placeholder="Search by film, director or actor..."
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <div className="max-h-[70vh] space-y-5 overflow-y-auto">
+          {loading ? (
+            Array.from({ length: 4 }, (_, i) => <div key={i} className="h-16 animate-pulse rounded-md bg-zinc-800" />)
+          ) : results && "error" in results ? (
+            <p className="text-sm text-red-400">{results.error}</p>
+          ) : results?.sections.length === 0 ? (
+            <p className="text-sm text-zinc-400">No films found for “{q.trim()}”.</p>
+          ) : (
+            results?.sections.map((s) => (
+              <section key={s.label}>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">{s.label}</h3>
+                <ul className="space-y-2">
+                  {s.films.map((m) => (
+                    <li key={m.id} className="flex items-center gap-3">
+                      <Link href={`/movie/${m.id}`} className="w-10 shrink-0" onClick={onClose}>
+                        <Poster path={m.posterPath} title={m.title} size="w92" />
+                      </Link>
+                      <div className="min-w-0 flex-1">
+                        <Link href={`/movie/${m.id}`} className="block truncate text-sm hover:text-amber-400" onClick={onClose}>
+                          {m.title} <span className="text-zinc-500">{m.year}</span>
+                        </Link>
+                        {m.friends.length > 0 && (
+                          <p className="truncate text-xs text-emerald-400">Watched by {m.friends.map((f) => `@${f}`).join(", ")}</p>
+                        )}
+                      </div>
+                      <ListButtons movieId={m.id} status={m.status} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // Watchlist toggle (+ / green tick) and mark watched; clicking "Watched" un-marks the film, which

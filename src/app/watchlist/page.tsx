@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { movies, reviews, watchlist } from "@/db/schema";
@@ -33,7 +32,7 @@ export default async function WatchlistPage() {
         <h1 className="mb-4 text-2xl font-bold">Watchlist ({toWatch.length})</h1>
         {toWatch.length === 0 ? (
           <p className="text-sm text-zinc-400">
-            Nothing here. <Link href="/search" className="text-amber-400">Search for a film</Link> to add one.
+            Nothing here. Use the search at the top to find a film and add it.
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-5">
