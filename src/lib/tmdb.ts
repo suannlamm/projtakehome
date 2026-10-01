@@ -12,14 +12,19 @@ export type TmdbMovie = {
   genres?: { id: number; name: string }[]; // only on /movie/{id}
 };
 
+// Thrown when TMDB is down, unreachable or rate-limiting us; the API turns it into a 502.
+export class TmdbError extends Error {}
+
 // Server-only: the token never reaches the browser. Returns null on 404.
 export async function tmdb<T>(path: string, params: Record<string, string> = {}): Promise<T | null> {
   const res = await fetch(`https://api.themoviedb.org/3${path}?${new URLSearchParams(params)}`, {
     headers: { Authorization: `Bearer ${process.env.TMDB_API_TOKEN}` },
     next: { revalidate: 3600 },
+  }).catch((err) => {
+    throw new TmdbError(`TMDB unreachable on ${path}`, { cause: err });
   });
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`TMDB ${res.status} on ${path}`);
+  if (!res.ok) throw new TmdbError(`TMDB ${res.status} on ${path}`);
   return res.json();
 }
 

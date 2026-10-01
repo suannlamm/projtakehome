@@ -9,6 +9,7 @@ const idOf = (username: string) =>
   db.select({ id: profiles.id }).from(profiles).where(eq(profiles.username, username.toLowerCase()));
 
 // People you follow. Following a private account sends a request until they accept it.
+// Following twice is a no-op: the (follower, followee) primary key means one row at most.
 export const followRoutes = new Hono<Env>()
   .put("/:username", async (c) => {
     const userId = c.get("userId");

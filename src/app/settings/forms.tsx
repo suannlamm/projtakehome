@@ -9,9 +9,15 @@ import { callApi } from "@/components/actions";
 
 const supabase = () => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
+type Message = { text: string; error: boolean } | null;
+
+function Note({ message }: { message: Message }) {
+  return message && <p className={`text-sm ${message.error ? "text-red-400" : "text-zinc-300"}`}>{message.text}</p>;
+}
+
 export function EmailForm({ current }: { current: string }) {
   const [email, setEmail] = useState(current);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<Message>(null);
   const [busy, setBusy] = useState(false);
 
   return (
@@ -22,11 +28,11 @@ export function EmailForm({ current }: { current: string }) {
         setBusy(true);
         const { error } = await supabase().auth.updateUser({ email }, { emailRedirectTo: `${location.origin}/auth/callback` });
         setBusy(false);
-        setMessage(error?.message ?? "Check your email to confirm the change.");
+        setMessage(error ? { text: error.message, error: true } : { text: "Check your email to confirm the change.", error: false });
       }}
     >
       <input className="input" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
-      {message && <p className="text-sm text-zinc-300">{message}</p>}
+      <Note message={message} />
       <button className="btn" disabled={busy || email === current}>
         Change email
       </button>
@@ -37,7 +43,7 @@ export function EmailForm({ current }: { current: string }) {
 export function PasswordForm() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<Message>(null);
   const [busy, setBusy] = useState(false);
 
   return (
@@ -45,11 +51,11 @@ export function PasswordForm() {
       className="space-y-3"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (password !== confirm) return setMessage("Passwords don't match.");
+        if (password !== confirm) return setMessage({ text: "Passwords don't match.", error: true });
         setBusy(true);
         const { error } = await supabase().auth.updateUser({ password });
         setBusy(false);
-        setMessage(error?.message ?? "Password updated.");
+        setMessage(error ? { text: error.message, error: true } : { text: "Password updated.", error: false });
         if (error) return;
         setPassword("");
         setConfirm("");
@@ -72,7 +78,7 @@ export function PasswordForm() {
         value={confirm}
         onChange={(e) => setConfirm(e.target.value)}
       />
-      {message && <p className="text-sm text-zinc-300">{message}</p>}
+      <Note message={message} />
       <button className="btn" disabled={busy}>
         Change password
       </button>
@@ -113,6 +119,7 @@ export function SettingToggle({ field, checked, label, hint }: { field: Field; c
 }
 
 export function DeleteAccount({ username }: { username: string }) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
 
   async function remove() {
@@ -124,7 +131,8 @@ export function DeleteAccount({ username }: { username: string }) {
       return alert(err);
     }
     await supabase().auth.signOut({ scope: "local" });
-    location.assign("/login");
+    router.push("/login");
+    router.refresh();
   }
 
   return (

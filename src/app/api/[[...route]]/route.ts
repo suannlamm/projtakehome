@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
+import { profiles } from "@/db/schema";
 import { getUserId } from "@/lib/auth";
+import { TmdbError } from "@/lib/tmdb";
 import type { Env } from "@/server/env";
 import { feedRoutes } from "@/server/routes/feed";
 import { followerRoutes, followRoutes } from "@/server/routes/follows";
@@ -24,11 +26,17 @@ app.get("/health", async (c) => {
   return c.json({ ok: true });
 });
 
-// Every route registered below this line requires a signed-in user.
+// Every route registered below this line requires a signed-in user with a handle. Picking one is
+// /api/profile's job, so it's the one route a handle-less user is still let through to.
 app.use("*", async (c, next) => {
   const userId = await getUserId();
   if (!userId) return c.json({ error: "Unauthorized" }, 401);
   c.set("userId", userId);
+
+  if (c.req.path !== "/api/profile") {
+    const [profile] = await db.select({ username: profiles.username }).from(profiles).where(eq(profiles.id, userId));
+    if (!profile?.username) return c.json({ error: "Finish setting up your account: pick a handle first." }, 403);
+  }
   await next();
 });
 
@@ -43,9 +51,11 @@ app.route("/profile", profileRoutes);
 app.route("/recommendations", recommendationRoutes);
 
 app.notFound((c) => c.json({ error: "Not found" }, 404));
+// TMDB outages aren't retried; the user sees a clear message and tries again later.
 app.onError((err, c) => {
   console.error(err);
-  return c.json({ error: "Internal server error" }, 500);
+  if (err instanceof TmdbError) return c.json({ error: "The film database (TMDB) isn't responding. Try again in a moment." }, 502);
+  return c.json({ error: "Something went wrong on our side. Try again." }, 500);
 });
 
 const handler = handle(app);

@@ -8,8 +8,12 @@ import type { Env } from "@/server/env";
 import { saveToList } from "./watchlist";
 
 const reviewSchema = z.object({
-  rating: z.number().int().min(1).max(10),
-  body: z.string().trim().max(5000).nullish(),
+  rating: z
+    .number({ error: "Pick a rating from 1 to 10 before saving" })
+    .int("Rating must be a whole number from 1 to 10")
+    .min(1, "Rating must be a whole number from 1 to 10")
+    .max(10, "Rating must be a whole number from 1 to 10"),
+  body: z.string().trim().max(5000, "Reviews must be 5000 characters or fewer").nullish(),
   isPublic: z.boolean().default(true),
 });
 
@@ -17,7 +21,7 @@ export const reviewRoutes = new Hono<Env>()
   // Create or replace the user's rating of this film. Rating a film marks it watched.
   .put("/:movieId{[0-9]{1,9}}", async (c) => {
     const parsed = reviewSchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: "Invalid review", issues: parsed.error.issues }, 400);
+    if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid review" }, 400);
 
     const userId = c.get("userId");
     const movieId = Number(c.req.param("movieId"));

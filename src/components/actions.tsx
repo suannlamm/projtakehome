@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Activity,
   Bookmark,
   ChartColumn,
   Check,
@@ -18,6 +17,7 @@ import {
   Sparkles,
   Trash2,
   User,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import type { FollowStatus, Status } from "@/lib/queries";
@@ -25,12 +25,14 @@ import { Poster, Rating } from "@/components/ui";
 
 // Small interactive widgets. Each calls the /api routes, then refreshes the server-rendered page.
 
+// Returns null on success, or a message to show the user.
 export async function callApi(method: string, url: string, body?: unknown) {
   const res = await fetch(url, {
     method,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
-  });
+  }).catch(() => null);
+  if (!res) return "Couldn't reach the server. Check your connection and try again.";
   if (res.ok) return null;
   const data = await res.json().catch(() => ({}));
   return (data.error as string) ?? `Request failed (${res.status})`;
@@ -43,7 +45,7 @@ export function NavLinks() {
     ["/watchlist", "Watchlist", Bookmark],
     ["/stats", "Stats", ChartColumn],
     ["/recommendations", "Taste profile", Sparkles],
-    ["/activity", "Activity", Activity],
+    ["/friends", "Friends", Users],
   ];
 
   return links.map(([href, label, Icon]) => (
@@ -131,14 +133,12 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
   const [results, setResults] = useState<SearchResults | { error: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const query = q.trim();
+
   // Debounced: searches 300ms after typing stops, and drops the response to any older query.
+  // Under 2 characters nothing is fetched, and the render below shows no results.
   useEffect(() => {
-    const query = q.trim();
-    if (query.length < 2) {
-      setResults(null);
-      setLoading(false);
-      return;
-    }
+    if (query.length < 2) return;
     const controller = new AbortController();
     const t = setTimeout(() => {
       setLoading(true);
@@ -154,7 +154,7 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
       clearTimeout(t);
       controller.abort();
     };
-  }, [q]);
+  }, [query]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -176,12 +176,12 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
           onChange={(e) => setQ(e.target.value)}
         />
         <div className="max-h-[70vh] space-y-5 overflow-y-auto">
-          {loading ? (
+          {query.length < 2 ? null : loading ? (
             Array.from({ length: 4 }, (_, i) => <div key={i} className="h-16 animate-pulse rounded-md bg-zinc-800" />)
           ) : results && "error" in results ? (
             <p className="text-sm text-red-400">{results.error}</p>
           ) : results?.sections.length === 0 ? (
-            <p className="text-sm text-zinc-400">No films found for “{q.trim()}”.</p>
+            <p className="text-sm text-zinc-400">No films found for “{query}”.</p>
           ) : (
             results?.sections.map((s) => (
               <section key={s.label}>
@@ -295,6 +295,7 @@ function ReviewEditor({ movieId, existing, onDone }: { movieId: number; existing
   const [error, setError] = useState<string | null>(null);
 
   async function submit(method: "PUT" | "DELETE") {
+    if (method === "PUT" && rating === 0) return setError("Pick a rating from 1 to 10 before saving.");
     setBusy(true);
     const err = await callApi(method, `/api/reviews/${movieId}`, method === "PUT" ? { rating, body, isPublic } : undefined);
     setBusy(false);
@@ -320,7 +321,10 @@ function ReviewEditor({ movieId, existing, onDone }: { movieId: number; existing
             aria-label={`${n} out of 10`}
             aria-pressed={n === rating}
             className={`h-8 w-8 rounded text-sm ${n <= rating ? "bg-amber-500 text-zinc-950" : "bg-zinc-800 hover:bg-zinc-700"}`}
-            onClick={() => setRating(n)}
+            onClick={() => {
+              setRating(n);
+              setError(null);
+            }}
           >
             {n}
           </button>
@@ -338,7 +342,7 @@ function ReviewEditor({ movieId, existing, onDone }: { movieId: number; existing
         Visible to your followers
       </label>
       <div className="flex flex-wrap items-center gap-2">
-        <button className="btn" disabled={busy || rating === 0}>
+        <button className="btn" disabled={busy}>
           Save
         </button>
         {onDone && (
@@ -524,7 +528,7 @@ export function ProfileForm({ initial }: { initial?: { username: string; display
   const router = useRouter();
   const [username, setUsername] = useState(initial?.username ?? "");
   const [displayName, setDisplayName] = useState(initial?.displayName ?? "");
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
   return (
@@ -535,7 +539,7 @@ export function ProfileForm({ initial }: { initial?: { username: string; display
         setBusy(true);
         const err = await callApi("PATCH", "/api/profile", { username, displayName });
         setBusy(false);
-        setMessage(err ?? (initial ? "Saved" : null));
+        setMessage(err ? { text: err, error: true } : initial ? { text: "Saved", error: false } : null);
         if (err) return;
         if (!initial) router.push("/");
         router.refresh();
@@ -549,7 +553,7 @@ export function ProfileForm({ initial }: { initial?: { username: string; display
         value={displayName}
         onChange={(e) => setDisplayName(e.target.value)}
       />
-      {message && <p className="text-sm text-zinc-300">{message}</p>}
+      {message && <p className={`text-sm ${message.error ? "text-red-400" : "text-zinc-300"}`}>{message.text}</p>}
       <button className="btn" disabled={busy}>
         {initial ? "Save" : "Continue"}
       </button>

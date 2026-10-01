@@ -90,7 +90,7 @@ export async function getProfile(username: string, viewerId: string) {
   return { ...member, canView: true as const, stats, watched };
 }
 
-// Used by /activity, GET /api/feed and the movie page (with movieId): films the people you follow
+// Used by /friends, GET /api/feed and the movie page (with movieId): films the people you follow
 // have watched, with their rating if it's public. A later rating bumps the event back up.
 export async function getFeed(viewerId: string, movieId?: number) {
   const at = sql`greatest(${watchlist.watchedAt}, ${reviews.updatedAt})`;
@@ -115,7 +115,7 @@ export async function getFeed(viewerId: string, movieId?: number) {
     .limit(30);
 }
 
-// Used by /activity and GET /api/users?q=: find members by handle or display name.
+// Used by /friends and GET /api/users?q=: find members by handle or display name.
 export async function searchUsers(q: string, viewerId: string) {
   const pattern = `%${q.trim().replace(/[\\%_]/g, "\\$&")}%`;
   return db

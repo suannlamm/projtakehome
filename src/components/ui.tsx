@@ -13,6 +13,7 @@ export function Poster({ path, title, size = "w342" }: { path: string | null; ti
   }
   // TMDB serves pre-sized images, so a plain <img> avoids spending Vercel's image optimisation quota.
   return (
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={`https://image.tmdb.org/t/p/${size}${path}`}
       alt={title}

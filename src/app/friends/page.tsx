@@ -7,7 +7,7 @@ import { getFeed, searchUsers } from "@/lib/queries";
 import { FollowButton, RequestButtons } from "@/components/actions";
 import { Poster, Rating } from "@/components/ui";
 
-export default async function ActivityPage({ searchParams }: { searchParams: Promise<{ q?: string; tab?: string }> }) {
+export default async function FriendsPage({ searchParams }: { searchParams: Promise<{ q?: string; tab?: string }> }) {
   const user = await requireUser();
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
@@ -66,9 +66,12 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
       <aside className="space-y-8">
         <section>
           <h2 className="mb-3 font-semibold">Find people</h2>
-          <form action="/activity">
+          <form action="/friends">
             <input name="q" defaultValue={q} minLength={2} className="input" placeholder="Handle or name..." />
           </form>
+          <p className="mt-2 text-sm text-zinc-400">
+            Share <span className="font-semibold text-amber-400">@{user.username}</span> with your friends for them to find you.
+          </p>
           {found && (
             <ul className="mt-3 space-y-2">
               {found.length === 0 && <li className="text-sm text-zinc-400">No one found for “{q}”.</li>}
@@ -84,11 +87,11 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
 
         <section>
           <div className="mb-3 flex gap-2 text-sm font-semibold">
-            <Link href="/activity" className={`tab ${showRequests ? "" : "tab-active"}`}>
+            <Link href="/friends" className={`tab ${showRequests ? "" : "tab-active"}`}>
               Following ({following.length})
             </Link>
             {me.isPrivate && (
-              <Link href="/activity?tab=requests" className={`tab ${showRequests ? "tab-active" : ""}`}>
+              <Link href="/friends?tab=requests" className={`tab ${showRequests ? "tab-active" : ""}`}>
                 Requests ({requests.length})
               </Link>
             )}
@@ -107,7 +110,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
               </ul>
             )
           ) : following.length === 0 ? (
-            <p className="text-sm text-zinc-400">You're not following anyone yet.</p>
+            <p className="text-sm text-zinc-400">You&apos;re not following anyone yet.</p>
           ) : (
             <ul className="space-y-2">
               {following.map((u) => (

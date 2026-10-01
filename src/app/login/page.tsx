@@ -12,8 +12,19 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const showError = (error: { code?: string; message: string }) =>
+    setMessage({
+      text:
+        error.code === "invalid_credentials"
+          ? "Incorrect email or password."
+          : error.code === "email_not_confirmed"
+            ? "Confirm your email first: check your inbox for the link."
+            : error.message,
+      error: true,
+    });
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,13 +37,13 @@ export default function LoginPage() {
         options: { emailRedirectTo: `${location.origin}/auth/callback` },
       });
       setBusy(false);
-      if (error) return setMessage(error.message);
+      if (error) return showError(error);
       // No session means Supabase is waiting for the user to confirm their email.
-      if (!data.session) return setMessage("Check your email for a confirmation link.");
+      if (!data.session) return setMessage({ text: "Check your email for a confirmation link.", error: false });
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       setBusy(false);
-      if (error) return setMessage(error.message);
+      if (error) return showError(error);
     }
     router.push("/");
     router.refresh();
@@ -44,9 +55,13 @@ export default function LoginPage() {
 
       <button
         className="btn-ghost w-full py-2"
-        onClick={() =>
-          supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: `${location.origin}/auth/callback` } })
-        }
+        onClick={async () => {
+          const { error } = await supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: { redirectTo: `${location.origin}/auth/callback` },
+          });
+          if (error) showError(error);
+        }}
       >
         Continue with Google
       </button>
@@ -64,7 +79,7 @@ export default function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        {message && <p className="text-sm text-zinc-300">{message}</p>}
+        {message && <p className={`text-sm ${message.error ? "text-red-400" : "text-zinc-300"}`}>{message.text}</p>}
         <button className="btn w-full py-2" disabled={busy}>
           {mode === "signin" ? "Sign in" : "Sign up"}
         </button>
