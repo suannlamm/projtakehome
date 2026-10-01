@@ -150,6 +150,18 @@ test.describe.serial("a signed-in member", () => {
     await expect(page.getByText("Generations today: 1/2")).toBeVisible();
   });
 
+  test("coming back shows the last profile at once, with an empty prompt box that typing isn't overwritten in", async () => {
+    await page.goto("/recommendations");
+    await expect(page.getByText(/^Your last taste profile, generated/)).toBeVisible();
+    const box = page.getByPlaceholder(/Optional: anything to steer the picks/);
+    await expect(box).toHaveValue("");
+
+    await box.pressSequentially("something with robots");
+    await page.waitForTimeout(3000);
+    await expect(box).toHaveValue("something with robots");
+    await expect(page.getByText("Generations today: 1/2")).toBeVisible();
+  });
+
   test("the Friends tab replaced Activity, and signing out works", async () => {
     await expect(page.getByRole("link", { name: "Friends" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Activity" })).toHaveCount(0);

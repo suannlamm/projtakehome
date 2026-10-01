@@ -86,15 +86,17 @@ async function toResponse(userId: string, row: typeof tasteProfiles.$inferSelect
 }
 const usage = (used: number): Usage => ({ used, limit: DAILY_LIMIT });
 
+// The saved profile (null if there isn't one yet) and today's usage. Used by GET below and by the
+// taste profile page, which renders it on the server so it's there before the user can type.
+export async function loadTasteProfile(userId: string) {
+  const [saved, used] = await Promise.all([getSavedTasteProfile(userId), getTasteGenerationsToday(userId)]);
+  return { profile: saved && (await toResponse(userId, saved, true)), usage: usage(used) };
+}
+
 // Hybrid approach: TMDB supplies real candidate films, Gemini picks from them and explains why.
 // The model can't invent films, because any pick that isn't a candidate is dropped.
 export const recommendationRoutes = new Hono<Env>()
-  // The saved profile (null if there isn't one yet), so the page can show it straight away.
-  .get("/", async (c) => {
-    const userId = c.get("userId");
-    const [saved, used] = await Promise.all([getSavedTasteProfile(userId), getTasteGenerationsToday(userId)]);
-    return c.json({ profile: saved && (await toResponse(userId, saved, true)), usage: usage(used) });
-  })
+  .get("/", async (c) => c.json(await loadTasteProfile(c.get("userId"))))
   .post("/", async (c) => {
     const parsed = bodySchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return c.json({ error: "Prompt must be 300 characters or fewer" }, 400);
