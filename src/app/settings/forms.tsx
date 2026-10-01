@@ -88,10 +88,12 @@ export function PasswordForm() {
 
 type Field = "isPrivate" | "tasteUsesWatched" | "tasteUsesWatchlist";
 
-// A tick box that saves as soon as it changes.
+// A tick box that saves as soon as it changes. It's disabled while saving: two saves in flight could
+// finish in either order and leave the box showing the opposite of what was stored.
 export function SettingToggle({ field, checked, label, hint }: { field: Field; checked: boolean; label: string; hint: string }) {
   const router = useRouter();
   const [value, setValue] = useState(checked);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -100,10 +102,13 @@ export function SettingToggle({ field, checked, label, hint }: { field: Field; c
         type="checkbox"
         className="mt-1"
         checked={value}
+        disabled={saving}
         onChange={async (e) => {
           const next = e.target.checked;
           setValue(next);
+          setSaving(true);
           const err = await callApi("PATCH", "/api/profile", { [field]: next });
+          setSaving(false);
           setError(err);
           if (err) setValue(!next);
           else router.refresh();

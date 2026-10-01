@@ -85,6 +85,19 @@ test.describe.serial("a signed-in member", () => {
     await expect(page.getByText("Inception")).toBeVisible();
   });
 
+  test("search never shows the previous query's results under a new query", async () => {
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    const input = page.getByPlaceholder("Search by film, director or actor...");
+    await input.fill("Inception");
+    await expect(page.getByRole("listitem").filter({ hasText: "Inception 2010" }).first()).toBeVisible();
+
+    await input.fill("Interstellar");
+    // Checked straight away, not retried: the old results must be gone the moment the query changes.
+    expect(await page.getByRole("listitem").filter({ hasText: "Inception 2010" }).count()).toBe(0);
+    await expect(page.getByRole("listitem").filter({ hasText: "Interstellar 2014" }).first()).toBeVisible();
+    await page.keyboard.press("Escape");
+  });
+
   test("a review needs a rating, and rating marks the film watched", async () => {
     await page.goto("/movie/27205");
     await page.getByRole("button", { name: "Save" }).click();
@@ -106,6 +119,17 @@ test.describe.serial("a signed-in member", () => {
   test("stats count the rating", async () => {
     await page.goto("/stats");
     await expect(page.getByText("8/10")).toBeVisible();
+  });
+
+  test("deleting a rating gives a fresh form, not one still holding the deleted rating", async () => {
+    await page.goto("/movie/27205");
+    await page.getByRole("button", { name: "Edit review" }).click();
+    await page.getByRole("button", { name: "Delete rating" }).click();
+    await expect(page.getByRole("heading", { name: "Rate this film" })).toBeVisible();
+    await expect(page.getByRole("button", { pressed: true })).toHaveCount(0);
+    await expect(page.getByPlaceholder("Write a review (optional)")).toHaveValue("");
+    // The film stays watched; only the rating went.
+    await expect(page.getByRole("button", { name: "Watched", exact: true })).toBeVisible();
   });
 
   test("friends: share your handle, follow someone, then see their films", async () => {
@@ -160,6 +184,21 @@ test.describe.serial("a signed-in member", () => {
     await page.waitForTimeout(3000);
     await expect(box).toHaveValue("something with robots");
     await expect(page.getByText("Generations today: 1/2")).toBeVisible();
+  });
+
+  test("the privacy setting can't be changed again while it's still saving", async () => {
+    await page.goto("/settings");
+    const box = page.getByRole("checkbox", { name: /Private account/ });
+    await expect(box).not.toBeChecked();
+    await box.click();
+    await expect(box).toBeDisabled();
+    await expect(box).toBeEnabled();
+    await page.reload();
+    await expect(box).toBeChecked();
+    await box.click();
+    await expect(box).toBeEnabled();
+    await page.reload();
+    await expect(box).not.toBeChecked();
   });
 
   test("the Friends tab replaced Activity, and signing out works", async () => {

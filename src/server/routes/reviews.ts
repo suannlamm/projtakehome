@@ -27,12 +27,16 @@ export const reviewRoutes = new Hono<Env>()
     const movieId = Number(c.req.param("movieId"));
     if (!(await ensureMovie(movieId))) return c.json({ error: "Movie not found" }, 404);
 
+    // One transaction: a film is never left marked watched without the rating that marked it.
     const values = { rating: parsed.data.rating, body: parsed.data.body || null, isPublic: parsed.data.isPublic };
-    await saveToList(userId, movieId, true);
-    await db
-      .insert(reviews)
-      .values({ userId, movieId, ...values })
-      .onConflictDoUpdate({ target: [reviews.userId, reviews.movieId], set: { ...values, updatedAt: sql`now()` } });
+    await db.transaction(async (tx) => {
+      await saveToList(userId, movieId, true, tx);
+      await tx
+        .insert(reviews)
+        .values({ userId, movieId, ...values })
+        .onConflictDoUpdate({ target: [reviews.userId, reviews.movieId], set: { ...values, updatedAt: sql`now()` } });
+    });
+    clearHomeRow(userId);
     return c.body(null, 204);
   })
   // Deletes the rating only; the film stays watched. Ratings order the home row, so it's cleared.

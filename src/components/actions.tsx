@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -34,6 +34,8 @@ export async function callApi(method: string, url: string, body?: unknown) {
   }).catch(() => null);
   if (!res) return "Couldn't reach the server. Check your connection and try again.";
   if (res.ok) return null;
+  // The session ran out while the page was open; reloading takes them to sign in.
+  if (res.status === 401) return "You've been signed out. Reload the page to sign in again.";
   const data = await res.json().catch(() => ({}));
   return (data.error as string) ?? `Request failed (${res.status})`;
 }
@@ -130,10 +132,11 @@ type SearchResults = {
 
 function SearchPanel({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState("");
-  const [results, setResults] = useState<SearchResults | { error: string } | null>(null);
-  const [loading, setLoading] = useState(false);
+  // Results remember which query they're for, so another query's results are never shown.
+  const [results, setResults] = useState<{ query: string; data: SearchResults | { error: string } } | null>(null);
 
   const query = q.trim();
+  const current = results?.query === query ? results.data : null;
 
   // Debounced: searches 300ms after typing stops, and drops the response to any older query.
   // Under 2 characters nothing is fetched, and the render below shows no results.
@@ -141,14 +144,12 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
     if (query.length < 2) return;
     const controller = new AbortController();
     const t = setTimeout(() => {
-      setLoading(true);
       fetch(`/api/search?q=${encodeURIComponent(query)}`, { signal: controller.signal })
         .then(async (res) => {
           const data = await res.json();
-          setResults(res.ok ? data : { error: data.error ?? "Search failed" });
+          setResults({ query, data: res.ok ? data : { error: data.error ?? "Search failed" } });
         })
-        .catch(() => !controller.signal.aborted && setResults({ error: "Search failed. Try again." }))
-        .finally(() => !controller.signal.aborted && setLoading(false));
+        .catch(() => !controller.signal.aborted && setResults({ query, data: { error: "Search failed. Try again." } }));
     }, 300);
     return () => {
       clearTimeout(t);
@@ -176,14 +177,14 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
           onChange={(e) => setQ(e.target.value)}
         />
         <div className="max-h-[70vh] space-y-5 overflow-y-auto">
-          {query.length < 2 ? null : loading ? (
+          {query.length < 2 ? null : !current ? (
             Array.from({ length: 4 }, (_, i) => <div key={i} className="h-16 animate-pulse rounded-md bg-zinc-800" />)
-          ) : results && "error" in results ? (
-            <p className="text-sm text-red-400">{results.error}</p>
-          ) : results?.sections.length === 0 ? (
+          ) : "error" in current ? (
+            <p className="text-sm text-red-400">{current.error}</p>
+          ) : current.sections.length === 0 ? (
             <p className="text-sm text-zinc-400">No films found for “{query}”.</p>
           ) : (
-            results?.sections.map((s) => (
+            current.sections.map((s) => (
               <section key={s.label}>
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">{s.label}</h3>
                 <ul className="space-y-2">
@@ -413,6 +414,7 @@ export function WatchedEntry({ film }: { film: WatchedFilm }) {
   const [editing, setEditing] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [refreshing, startRefresh] = useTransition();
 
   async function remove() {
     if (!confirm(`Remove ${film.title}? Its rating and review will be deleted too.`)) return;
@@ -420,7 +422,7 @@ export function WatchedEntry({ film }: { film: WatchedFilm }) {
     const err = await callApi("DELETE", `/api/watchlist/${film.movieId}`);
     setBusy(false);
     if (err) alert(err);
-    else router.refresh();
+    else startRefresh(() => router.refresh());
   }
 
   const sentences = film.body?.split(/(?<=[.!?])\s+/) ?? [];
@@ -449,7 +451,7 @@ export function WatchedEntry({ film }: { film: WatchedFilm }) {
               className="text-zinc-400 hover:text-red-400 disabled:opacity-50"
               aria-label="Remove film"
               title="Remove film, with its rating and review"
-              disabled={busy}
+              disabled={busy || refreshing}
               onClick={remove}
             >
               <Trash2 size={18} />
@@ -481,23 +483,26 @@ export function WatchedEntry({ film }: { film: WatchedFilm }) {
 }
 
 // Follow, or (for a private account) send a request. Clicking again unfollows or cancels the request.
+// These buttons stay disabled until the refreshed page arrives, so a second click always acts on the
+// current status rather than the one before the first click.
 export function FollowButton({ username, status }: { username: string; status: FollowStatus }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [refreshing, startRefresh] = useTransition();
 
   async function toggle() {
     setBusy(true);
     const err = await callApi(status ? "DELETE" : "PUT", `/api/follows/${username}`);
     setBusy(false);
     if (err) alert(err);
-    else router.refresh();
+    else startRefresh(() => router.refresh());
   }
 
   return (
     <button
       className={status ? "btn-ghost" : "btn"}
       title={status === "requested" ? "Click to cancel the request" : undefined}
-      disabled={busy}
+      disabled={busy || refreshing}
       onClick={toggle}
     >
       {status === "following" ? "Following" : status === "requested" ? "Requested" : "Follow"}
@@ -509,21 +514,22 @@ export function FollowButton({ username, status }: { username: string; status: F
 export function RequestButtons({ username }: { username: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [refreshing, startRefresh] = useTransition();
 
   async function answer(method: "PUT" | "DELETE") {
     setBusy(true);
     const err = await callApi(method, `/api/followers/${username}`);
     setBusy(false);
     if (err) alert(err);
-    else router.refresh();
+    else startRefresh(() => router.refresh());
   }
 
   return (
     <div className="flex shrink-0 gap-2">
-      <button className="btn" disabled={busy} onClick={() => answer("PUT")}>
+      <button className="btn" disabled={busy || refreshing} onClick={() => answer("PUT")}>
         Accept
       </button>
-      <button className="btn-ghost" disabled={busy} onClick={() => answer("DELETE")}>
+      <button className="btn-ghost" disabled={busy || refreshing} onClick={() => answer("DELETE")}>
         Decline
       </button>
     </div>

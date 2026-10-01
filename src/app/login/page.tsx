@@ -98,7 +98,13 @@ export default function LoginPage({ searchParams }: { searchParams: Promise<{ er
 
       <p className="text-center text-sm text-zinc-400">
         {mode === "signin" ? "No account?" : "Already have one?"}{" "}
-        <button className="text-amber-400" onClick={() => setMode(mode === "signin" ? "signup" : "signin")}>
+        <button
+          className="text-amber-400"
+          onClick={() => {
+            setMode(mode === "signin" ? "signup" : "signin");
+            setMessage(null);
+          }}
+        >
           {mode === "signin" ? "Sign up" : "Sign in"}
         </button>
       </p>
