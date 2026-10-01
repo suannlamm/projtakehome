@@ -41,12 +41,14 @@ export default function TasteProfilePage() {
         body: JSON.stringify({ prompt: prompt.trim() || undefined, refresh }),
       });
       if (res.status === 401) return router.push("/login");
-      const data = await res.json();
+      // A reply that isn't JSON comes from the hosting platform, e.g. its timeout page.
+      const data = await res.json().catch(() => null);
+      if (!data) return setError("The request took too long or failed. Try again in a minute.");
       if (data.usage) setUsage(data.usage);
       if (res.ok) setProfile(data.profile);
-      else setError(data.error ?? "Something went wrong");
+      else setError(data.error ?? "Something went wrong. Try again.");
     } catch {
-      setError("Network error");
+      setError("Couldn't reach the server. Check your connection and try again.");
     } finally {
       setLoading(false);
     }

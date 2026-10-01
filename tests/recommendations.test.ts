@@ -1,4 +1,4 @@
-import { APICallError } from "ai";
+import { APICallError, LoadAPIKeyError } from "ai";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { authUsers } from "drizzle-orm/supabase";
 import { db } from "@/db";
@@ -17,9 +17,12 @@ vi.mock("@/lib/queries", async (importOriginal) => ({
   getWatchedHistory: async () => [{ movieId: 1, title: "Heat", rating: 9, body: null }],
   getCandidates: async () => [2, 3, 4].map((id) => film(id)),
 }));
-// TMDB title search only knows "WALL·E".
+// TMDB title search only knows "WALL·E", and fails outright for "TMDB down".
 vi.mock("@/lib/tmdb", () => ({
-  tmdb: async (_path: string, params: { query: string }) => ({ results: params.query === "WALL·E" ? [film(10681, "WALL·E")] : [] }),
+  tmdb: async (_path: string, params: { query: string }) => {
+    if (params.query === "TMDB down") throw new Error("TMDB 503");
+    return { results: params.query === "WALL·E" ? [film(10681, "WALL·E")] : [] };
+  },
 }));
 
 import { recommendationRoutes } from "@/server/routes/recommendations";
@@ -116,6 +119,53 @@ it("returns the saved profile, with the prompt it was made with, on GET", async 
   const { profile } = await (await post("GET", "/")).json();
   expect(profile).toMatchObject({ tasteProfile: reply.output.tasteProfile, prompt: "older than 2000", cached: true });
   expect(generateText).toHaveBeenCalledOnce();
+});
+
+describe("Gemini errors", () => {
+  const usedToday = async () => (await (await post("GET", "/")).json()).usage.used;
+  const outsidePicks = (...titles: string[]) => ({
+    output: { tasteProfile: "x", picks: titles.map((title) => ({ candidateId: null, title, year: 2000, reason: "r" })) },
+  });
+
+  it("gives each model a time limit", async () => {
+    generateText.mockResolvedValue(reply);
+    await generate();
+    expect(generateText.mock.calls[0][0].abortSignal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("says it took too long when every model timed out", async () => {
+    generateText.mockRejectedValue(new DOMException("The operation timed out", "TimeoutError"));
+    const res = await generate();
+    expect(res.status).toBe(504);
+    expect((await res.json()).error).toMatch(/too long/);
+    expect(await usedToday()).toBe(0);
+  });
+
+  it.each([
+    ["a missing API key", new LoadAPIKeyError({ message: "GOOGLE_GENERATIVE_AI_API_KEY is missing" })],
+    ["a rejected API key", apiError(403)],
+  ])("stops after the first model on %s, since no other model would work", async (_, err) => {
+    generateText.mockRejectedValue(err);
+    const res = await generate();
+    expect(res.status).toBe(500);
+    expect(modelsTried()).toEqual(["gemini-3.8-flash"]);
+    expect(await usedToday()).toBe(0);
+  });
+
+  it("gives the generation back if TMDB fails after Gemini answered", async () => {
+    generateText.mockResolvedValue(outsidePicks("TMDB down"));
+    expect((await generate()).status).toBe(500);
+    expect(await usedToday()).toBe(0);
+  });
+
+  it("doesn't save or count a profile whose picks were all dropped", async () => {
+    generateText.mockResolvedValue(outsidePicks("Made Up One", "Made Up Two"));
+    const res = await generate();
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toMatch(/real film/);
+    expect(await usedToday()).toBe(0);
+    expect((await (await post("GET", "/")).json()).profile).toBeNull();
+  });
 });
 
 describe("daily limit of 2 generations", () => {

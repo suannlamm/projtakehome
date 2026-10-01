@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Hono } from "hono";
-import { APICallError, generateText, Output } from "ai";
+import { APICallError, generateText, LoadAPIKeyError, Output } from "ai";
 import { google } from "@ai-sdk/google";
 import { z } from "zod";
 import type { tasteProfiles } from "@/db/schema";
@@ -29,6 +29,31 @@ const MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gem
 // Gemini calls per member per day, so one member can't use up the shared free-tier quota.
 // Reusing a saved profile doesn't count.
 const DAILY_LIMIT = 2;
+
+// The API route may run for 60s (maxDuration). Gemini gets at most 45s across all models, leaving
+// time to check picks on TMDB and save, and one model gets at most 20s before the next is tried.
+const GEMINI_BUDGET_MS = 45_000;
+const MODEL_TIMEOUT_MS = 20_000;
+
+const isTimeout = (err: unknown) => err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+// A missing or rejected API key affects every model, so there's no point trying the others.
+const isKeyProblem = (err: unknown) =>
+  LoadAPIKeyError.isInstance(err) || (APICallError.isInstance(err) && (err.statusCode === 401 || err.statusCode === 403));
+
+// What to tell the user when no model produced a profile. Other failures (overloaded, a reply that
+// didn't fit the schema, a safety block) are worth retrying shortly.
+function geminiFailure(errors: unknown[]) {
+  if (errors.some(isKeyProblem)) {
+    return [{ error: "The AI service isn't set up correctly right now. Please try again later." }, 500] as const;
+  }
+  if (errors.every((err) => APICallError.isInstance(err) && err.statusCode === 429)) {
+    return [{ error: "The AI usage limit has been reached. Try again later." }, 429] as const;
+  }
+  if (errors.every(isTimeout)) {
+    return [{ error: "The AI service took too long to answer. Try again in a minute." }, 504] as const;
+  }
+  return [{ error: "The AI service is unavailable right now. Try again in a minute." }, 503] as const;
+}
 
 export type Recommendations = {
   tasteProfile: string;
@@ -137,11 +162,12 @@ export const recommendationRoutes = new Hono<Env>()
       "Write a short taste profile derived from this. Give each pick a one-line reason that references the user's specific history or watchlist by naming a film from it.",
     ].join("\n");
 
-    const generate = (model: string) =>
+    const generate = (model: string, abortSignal: AbortSignal) =>
       generateText({
         model: google(model),
         // No retries of the same model: a failure moves straight on to the next one in MODELS.
         maxRetries: 0,
+        abortSignal,
         output: Output.object({
           schema: z.object({
             tasteProfile: z.string().describe("1-2 sentences describing the user's taste, addressed to them as 'you'"),
@@ -161,50 +187,63 @@ export const recommendationRoutes = new Hono<Env>()
         prompt,
       });
 
-    type Pick = { candidateId: number | null; title: string; year: number; reason: string };
-    let output: { tasteProfile: string; picks: Pick[] } | undefined;
-    const errors: unknown[] = [];
-    for (const model of MODELS) {
-      try {
-        ({ output } = await generate(model));
-        break;
-      } catch (err) {
-        console.error(`${model} failed`, err);
-        errors.push(err);
+    // Anything that stops a profile being saved from here on (Gemini, TMDB, the database) gives
+    // today's generation back.
+    let stored = false;
+    try {
+      type Pick = { candidateId: number | null; title: string; year: number; reason: string };
+      let output: { tasteProfile: string; picks: Pick[] } | undefined;
+      const errors: unknown[] = [];
+      const deadline = Date.now() + GEMINI_BUDGET_MS;
+      for (const model of MODELS) {
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break;
+        try {
+          ({ output } = await generate(model, AbortSignal.timeout(Math.min(MODEL_TIMEOUT_MS, remaining))));
+          break;
+        } catch (err) {
+          console.error(`${model} failed`, err);
+          errors.push(err);
+          if (isKeyProblem(err)) break;
+        }
       }
-    }
-    if (!output) {
-      await returnTasteGeneration(userId);
-      const quotaUsed = errors.every((err) => APICallError.isInstance(err) && err.statusCode === 429);
-      return quotaUsed
-        ? c.json({ error: "The AI usage limit has been reached. Try again later." }, 429)
-        : c.json({ error: "The AI service is unavailable right now. Try again in a minute." }, 503);
-    }
+      if (!output) {
+        const [body, status] = geminiFailure(errors);
+        return c.json(body, status);
+      }
 
-    // Picks outside the pool must be found on TMDB, so the model still can't invent films.
-    const byId = new Map(pool.map((m) => [m.id, m]));
-    const found = await Promise.all(
-      output.picks.map(async (p) => {
-        if (p.candidateId !== null && byId.has(p.candidateId)) return byId.get(p.candidateId);
-        const search = await tmdb<{ results: TmdbMovie[] }>("/search/movie", { query: p.title, year: String(p.year) });
-        return search?.results[0];
-      }),
-    );
-    // Up to 8 were requested as a buffer against drops, but the brief wants 3-5 shown.
-    const skip = new Set(onList);
-    const picks: Recommendations["picks"] = [];
-    for (const [i, p] of output.picks.entries()) {
-      if (picks.length === 5) break;
-      const m = found[i];
-      if (!m || skip.has(m.id)) continue;
-      skip.add(m.id);
-      picks.push({ movieId: m.id, title: m.title, posterPath: m.poster_path, year: m.release_date?.slice(0, 4) ?? "", reason: p.reason });
+      // Picks outside the pool must be found on TMDB, so the model still can't invent films.
+      const byId = new Map(pool.map((m) => [m.id, m]));
+      const found = await Promise.all(
+        output.picks.map(async (p) => {
+          if (p.candidateId !== null && byId.has(p.candidateId)) return byId.get(p.candidateId);
+          const search = await tmdb<{ results: TmdbMovie[] }>("/search/movie", { query: p.title, year: String(p.year) });
+          return search?.results[0];
+        }),
+      );
+      // Up to 8 were requested as a buffer against drops, but the brief wants 3-5 shown.
+      const skip = new Set(onList);
+      const picks: Recommendations["picks"] = [];
+      for (const [i, p] of output.picks.entries()) {
+        if (picks.length === 5) break;
+        const m = found[i];
+        if (!m || skip.has(m.id)) continue;
+        skip.add(m.id);
+        picks.push({ movieId: m.id, title: m.title, posterPath: m.poster_path, year: m.release_date?.slice(0, 4) ?? "", reason: p.reason });
+      }
+      if (picks.length === 0) {
+        return c.json({ error: "None of Gemini's picks matched a real film you haven't seen. Try again." }, 502);
+      }
+
+      const row = await saveTasteProfile(userId, {
+        inputHash,
+        prompt: parsed.data.prompt ?? null,
+        result: { tasteProfile: output.tasteProfile, picks },
+        createdAt: new Date(),
+      });
+      stored = true;
+      return c.json({ profile: toResponse(row, false), usage: usage(used) });
+    } finally {
+      if (!stored) await returnTasteGeneration(userId);
     }
-    const row = await saveTasteProfile(userId, {
-      inputHash,
-      prompt: parsed.data.prompt ?? null,
-      result: { tasteProfile: output.tasteProfile, picks },
-      createdAt: new Date(),
-    });
-    return c.json({ profile: toResponse(row, false), usage: usage(used) });
   });
