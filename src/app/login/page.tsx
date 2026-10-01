@@ -22,7 +22,9 @@ export default function LoginPage() {
           ? "Incorrect email or password."
           : error.code === "email_not_confirmed"
             ? "Confirm your email first: check your inbox for the link."
-            : error.message,
+            : error.code === "user_already_exists"
+              ? "There's already an account associated with that email. Sign in instead."
+              : error.message,
       error: true,
     });
 
@@ -38,6 +40,9 @@ export default function LoginPage() {
       });
       setBusy(false);
       if (error) return showError(error);
+      // With "Confirm email" on, Supabase doesn't error for a taken email: it returns a stand-in user
+      // with no identities and sends nothing.
+      if (data.user?.identities?.length === 0) return showError({ code: "user_already_exists", message: "" });
       // No session means Supabase is waiting for the user to confirm their email.
       if (!data.session) return setMessage({ text: "Check your email for a confirmation link.", error: false });
     } else {

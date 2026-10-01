@@ -20,7 +20,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <Link href="/" className="mr-3 text-lg font-bold text-amber-400">
               Reel
             </Link>
-            {user ? (
+            {user && (
               <>
                 <NavLinks />
                 <div className="ml-auto flex items-center gap-1">
@@ -28,8 +28,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   <UserMenu username={user.username} />
                 </div>
               </>
-            ) : (
-              <Link href="/login" className="btn ml-auto">Sign in</Link>
             )}
           </nav>
         </header>

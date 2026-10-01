@@ -1,7 +1,8 @@
 # Reel
 
 A Letterboxd-style watchlist tracker. Search films from TMDB, keep a watchlist, mark films watched and rate them out of 10, see your stats, get an AI taste profile with recommendations, and follow friends to see what they watch.
-
+- **Name and Email:** `suann slam0051@student.monash.edu`
+- **Deployed project:** `https://projtakehome.vercel.app/`
 - **Demo login:** `demo@example.com` / `reel-demo-2026`. It follows four seeded members (Sam, Mira, Jordan, Priya) who have watch histories;
 
 **Stack:** Next.js 16 (App Router) on Vercel · Supabase Postgres + Auth (Google OAuth, email/password) · Drizzle ORM (server-only) · Hono API · Gemini via the Vercel AI SDK · Tailwind.
@@ -50,6 +51,6 @@ For setup to run it locally, see **[SETUP.md](SETUP.md)**. It lists every key an
 
 ### Accounts and errors
 - Email and password changes go straight to Supabase Auth from the browser; an email change needs confirming by email.
-- With Supabase's "Confirm email" setting on, signing up with an email that's already registered shows the same "check your email" message, so the form doesn't reveal who has an account.
+- Signing up with an email that already has an account (including one created through Google) shows "There's already an account associated with that email", rather than a "check your email" message for an email that never arrives. This favours clarity over hiding which emails are registered.
 - TMDB outages and rate limits aren't retried. The API returns a 502 saying TMDB isn't responding, and pages show an error screen with a "Try again" button.
 - Errors appear in red next to what caused them: a wrong email or password, an unconfirmed email, a review without a rating, a taken handle, a lost connection.
