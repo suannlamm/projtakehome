@@ -1,0 +1,29 @@
+# Runs on every push and pull request. Vercel deploys main on its own (its Git integration), so this is
+# the check that the code lints, type-checks, passes its tests and builds.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # The tests run the database in memory (PGlite) and mock TMDB and Gemini, so no secrets are needed. The build only needs
+    # these to exist; it never connects to anything.
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+      DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
