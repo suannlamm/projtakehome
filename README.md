@@ -17,6 +17,8 @@ For setup to run it locally, see **[SETUP.md](SETUP.md)**. It lists every key an
 | `npm run typecheck` | TypeScript, no emit |
 | `npm test` | Vitest. The social rules run against the real migrations in an in-memory Postgres ([PGlite](https://pglite.dev)): following is idempotent and can't target yourself, a renamed handle keeps its followers, private accounts' requests, you only see films, ratings and feed entries of people you follow, and no response ever contains a user id. Also: every API endpoint returns 401 when signed out and 403 before a handle is set (except the route that sets one), malformed requests are rejected with a readable message, a TMDB outage returns a clear 502, and the taste profile falls back through its models in order and drops made-up picks. TMDB and Gemini are mocked, so tests need no keys and never use the AI quota. |
 
+| `npm run test:e2e` | Playwright, in a real browser against the running app and the Supabase project in `.env.local`. It creates temporary `e2e-*@example.com` accounts, walks through the app (sign-in errors, onboarding with a taken handle, search, watchlist, rating, the home row updating, stats, following someone and seeing their films, the taste profile and its 0/2 counter, sign-out) and checks no API response contains a user id, then deletes the accounts. It uses one real Gemini request per run, so it isn't part of CI. |
+
 **CI/CD:** GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs lint, typecheck, tests and a production build on every push and pull request. Vercel deploys `main` through its Git integration.
 
 ## Side Note

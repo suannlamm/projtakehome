@@ -219,6 +219,13 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
 export function ListButtons({ movieId, status: initial }: { movieId: number; status: Status }) {
   const router = useRouter();
   const [status, setStatus] = useState(initial);
+  // A server refresh can change the status from elsewhere on the page (rating a film marks it
+  // watched), so a new value from the server replaces the local one.
+  const [fromServer, setFromServer] = useState(initial);
+  if (initial !== fromServer) {
+    setFromServer(initial);
+    setStatus(initial);
+  }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

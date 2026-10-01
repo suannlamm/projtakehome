@@ -68,7 +68,7 @@ test.describe.serial("a signed-in member", () => {
   });
 
   test("search finds a film and adds it to the watchlist", async () => {
-    await page.getByRole("button", { name: "Search" }).click();
+    await page.getByRole("button", { name: "Search", exact: true }).click();
     await page.getByPlaceholder("Search by film, director or actor...").fill("Inception");
     const row = page.getByRole("listitem").filter({ hasText: "Inception 2010" }).first();
     await row.getByRole("button", { name: "Add to watchlist" }).click();
@@ -88,7 +88,8 @@ test.describe.serial("a signed-in member", () => {
     await page.getByPlaceholder("Write a review (optional)").fill("Holds up.");
     await page.getByRole("button", { name: "Save" }).click();
     await expect(page.getByRole("heading", { name: "Your review" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Watched, click to un-mark" })).toBeVisible();
+    // Without a reload: the list buttons pick up the watched status from the server's refresh.
+    await expect(page.getByRole("button", { name: "Watched", exact: true })).toBeVisible();
   });
 
   test("home recommends straight away once a film is rated (the cached row was cleared)", async () => {
