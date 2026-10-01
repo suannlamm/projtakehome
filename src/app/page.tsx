@@ -1,7 +1,8 @@
 import { Suspense } from "react";
+import { unstable_cache } from "next/cache";
 import Link from "next/link";
 import { getCurrentUser, requireUser } from "@/lib/auth";
-import { getCandidates, getPosterInfo, getWatchedHistory } from "@/lib/queries";
+import { getCandidates, getPosterInfo, getWatchedHistory, homeTag } from "@/lib/queries";
 import { SearchButton } from "@/components/actions";
 import { MovieCard } from "@/components/ui";
 
@@ -29,21 +30,28 @@ export default async function HomePage() {
   );
 }
 
-// No AI here, so it's instant: TMDB's recommendations for the user's best-rated watched films.
+// No AI here: TMDB's recommendations for the user's best-rated watched films. The row is cached
+// for an hour and cleared when the user's own list or ratings change; friends' markers stay live.
 async function ForYou({ userId }: { userId: string }) {
-  const history = await getWatchedHistory(userId);
-  if (history.length === 0) {
+  const { watched, picks } = await unstable_cache(
+    async () => {
+      const history = await getWatchedHistory(userId);
+      const seeds = history.slice(0, 5).map((h) => h.movieId);
+      return { watched: history.length, picks: history.length ? (await getCandidates(userId, seeds)).slice(0, 15) : [] };
+    },
+    ["home-row", userId],
+    { tags: [homeTag(userId)], revalidate: 3600 },
+  )();
+  if (watched === 0) {
     return <p className="text-sm text-zinc-400">Mark a film as watched and recommendations will appear here.</p>;
   }
-
-  const picks = (await getCandidates(userId, history.slice(0, 5).map((h) => h.movieId))).slice(0, 15);
   if (picks.length === 0) return null;
   const info = await getPosterInfo(userId, picks.map((m) => m.id));
 
   return (
     <section className="w-full min-w-0">
       <h2 className="mb-3 text-sm font-semibold text-zinc-400">
-        Recommended from your {history.length} watched film{history.length === 1 ? "" : "s"}
+        Recommended from your {watched} watched film{watched === 1 ? "" : "s"}
       </h2>
       <div className="flex gap-4 overflow-x-auto pb-2">
         {picks.map((m) => (

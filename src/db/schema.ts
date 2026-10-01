@@ -6,6 +6,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   smallint,
@@ -14,6 +15,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { authUsers } from "drizzle-orm/supabase";
+import type { Recommendations } from "@/server/routes/recommendations";
 
 const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
@@ -35,12 +37,14 @@ export const profiles = pgTable(
 );
 
 // Local copy of the TMDB movies users have interacted with; id is the TMDB id.
+// synced_at is when the details were copied from TMDB.
 export const movies = pgTable("movies", {
   id: integer("id").primaryKey(),
   title: text("title").notNull(),
   posterPath: text("poster_path"),
   releaseDate: date("release_date"),
   overview: text("overview"),
+  syncedAt: timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // TMDB genre ids are stable, so they're used as the primary key.
@@ -91,6 +95,16 @@ export const reviews = pgTable(
     check("reviews_rating_range", sql`${t.rating} between 1 and 10`),
   ],
 );
+
+// Each user's latest taste profile. input_hash covers everything Gemini was given, so asking again
+// with nothing changed reuses this instead of spending another Gemini call.
+export const tasteProfiles = pgTable("taste_profiles", {
+  userId: uuid("user_id").primaryKey().references(() => profiles.id, { onDelete: "cascade" }),
+  inputHash: text("input_hash").notNull(),
+  prompt: text("prompt"),
+  result: jsonb("result").$type<Recommendations>().notNull(),
+  createdAt: createdAt(),
+}).enableRLS();
 
 // accepted is false while a follow of a private account is still a request.
 export const follows = pgTable(

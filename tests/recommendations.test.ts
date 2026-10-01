@@ -1,15 +1,15 @@
 import { APICallError } from "ai";
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { authUsers } from "drizzle-orm/supabase";
+import { db } from "@/db";
+import { tasteProfiles } from "@/db/schema";
 import { asUser } from "./helpers";
 
-// Gemini, TMDB and the database are all mocked: these tests never use the real API or its quota.
+// Gemini and TMDB are mocked, so these tests never use the real API or its quota. The database is
+// the real schema in memory (see db.ts), with one member whose list is empty.
 const generateText = vi.hoisted(() => vi.fn());
 vi.mock("ai", async (importOriginal) => ({ ...(await importOriginal<typeof import("ai")>()), generateText }));
-vi.mock("@/db", () => ({
-  // Every direct query gets the taste preferences back (watched films on, watchlist off),
-  // which also leaves the user's own list empty.
-  db: { select: () => ({ from: () => ({ where: async () => [{ watched: true, watchlist: false }] }) }) },
-}));
+vi.mock("@/db", async () => ({ db: await (await import("./db")).createTestDb() }));
 const film = (id: number, title = `Film ${id}`) => ({ id, title, poster_path: null, release_date: "2001-01-01", overview: "", vote_average: 7 });
 vi.mock("@/lib/queries", () => ({
   getWatchedHistory: async () => [{ movieId: 1, title: "Heat", rating: 9, body: null }],
@@ -35,13 +35,17 @@ const reply = {
   },
 };
 
-const post = asUser(recommendationRoutes);
-const generate = () => post("POST", "/", {});
+const userId = "00000000-0000-4000-8000-000000000001";
+const post = asUser(recommendationRoutes, userId);
+const generate = (body: { prompt?: string; refresh?: boolean } = {}) => post("POST", "/", body);
 const modelsTried = () => generateText.mock.calls.map(([options]) => options.model.modelId);
 
-beforeEach(() => {
+beforeAll(() => db.insert(authUsers).values({ id: userId }));
+
+beforeEach(async () => {
   generateText.mockReset();
   vi.spyOn(console, "error").mockImplementation(() => {});
+  await db.delete(tasteProfiles);
 });
 
 it("moves on to the next model when one is overloaded, without retrying it", async () => {
@@ -71,4 +75,35 @@ it("keeps candidates, looks up outside picks on TMDB, and drops ones TMDB can't 
   const body = await (await generate()).json();
   expect(body.tasteProfile).toBe(reply.output.tasteProfile);
   expect(body.picks.map((p: { movieId: number }) => p.movieId)).toEqual([2, 10681]);
+});
+
+it("reuses the saved profile when nothing has changed, without calling Gemini again", async () => {
+  generateText.mockResolvedValue(reply);
+  const first = await (await generate()).json();
+  const second = await (await generate()).json();
+  expect(generateText).toHaveBeenCalledOnce();
+  expect(first.cached).toBe(false);
+  expect(second).toEqual({ ...first, cached: true });
+});
+
+it("calls Gemini again when the prompt changes, or when new picks are asked for", async () => {
+  generateText.mockResolvedValue(reply);
+  await generate();
+  await generate({ prompt: "something with robots" });
+  await generate({ prompt: "something with robots", refresh: true });
+  expect(generateText).toHaveBeenCalledTimes(3);
+});
+
+it("doesn't save a failed attempt", async () => {
+  generateText.mockRejectedValue(apiError(503));
+  await generate();
+  expect(await (await post("GET", "/")).json()).toBeNull();
+});
+
+it("returns the saved profile, with the prompt it was made with, on GET", async () => {
+  generateText.mockResolvedValue(reply);
+  await generate({ prompt: "older than 2000" });
+  const saved = await (await post("GET", "/")).json();
+  expect(saved).toMatchObject({ tasteProfile: reply.output.tasteProfile, prompt: "older than 2000", cached: true });
+  expect(generateText).toHaveBeenCalledOnce();
 });

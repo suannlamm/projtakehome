@@ -22,6 +22,7 @@ const endpoints: [string, string][] = [
   ["GET", "/users/sam"],
   ["PATCH", "/profile"],
   ["DELETE", "/profile"],
+  ["GET", "/recommendations"],
   ["POST", "/recommendations"],
 ];
 

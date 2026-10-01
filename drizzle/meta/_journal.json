@@ -29,6 +29,20 @@
       "when": 1790832265427,
       "tag": "0003_private_accounts_and_taste_prefs",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790860144134,
+      "tag": "0004_taste_profile_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790860611152,
+      "tag": "0005_movie_synced_at",
+      "breakpoints": true
     }
   ]
 }

@@ -132,6 +132,9 @@ export async function searchUsers(q: string, viewerId: string) {
     .limit(20);
 }
 
+// Cache tag for a user's home page row. Changing their list or ratings clears it.
+export const homeTag = (userId: string) => `home:${userId}`;
+
 // Used by the home page and the taste profile: the user's watched films, best rated first.
 export async function getWatchedHistory(userId: string) {
   return db

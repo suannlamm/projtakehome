@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Recommendations } from "@/server/routes/recommendations";
+import type { TasteProfile } from "@/server/routes/recommendations";
 import { ListButtons } from "@/components/actions";
 import { MovieCard } from "@/components/ui";
 
-type Result = { status: "idle" | "loading" } | ({ status: "ok" } & Recommendations) | { status: "error"; error: string };
+type Result = { status: "idle" | "loading" } | ({ status: "ok" } & TasteProfile) | { status: "error"; error: string };
 
 // Client-rendered so the page shows a loading state while TMDB + Gemini run (can take several seconds).
 export default function TasteProfilePage() {
@@ -15,13 +15,25 @@ export default function TasteProfilePage() {
   const [prompt, setPrompt] = useState("");
   const [result, setResult] = useState<Result>({ status: "idle" });
 
-  async function generate() {
+  // Shows the saved profile, if there is one, without calling Gemini.
+  useEffect(() => {
+    fetch("/api/recommendations")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((saved: TasteProfile | null) => {
+        if (!saved) return;
+        setPrompt(saved.prompt ?? "");
+        setResult((r) => (r.status === "idle" ? { status: "ok", ...saved } : r));
+      })
+      .catch(() => {});
+  }, []);
+
+  async function generate(refresh = false) {
     setResult({ status: "loading" });
     try {
       const res = await fetch("/api/recommendations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim() || undefined }),
+        body: JSON.stringify({ prompt: prompt.trim() || undefined, refresh }),
       });
       if (res.status === 401) return router.push("/login");
       const data = await res.json();
@@ -70,6 +82,17 @@ export default function TasteProfilePage() {
 
       {result.status === "ok" && (
         <>
+          <p className="text-sm text-zinc-400">
+            Generated {new Date(result.generatedAt).toLocaleString()}.{" "}
+            {result.cached && (
+              <>
+                It&apos;s reused until your films, preferences or prompt change.{" "}
+                <button className="text-amber-400 hover:underline" onClick={() => generate(true)}>
+                  Get new picks anyway
+                </button>
+              </>
+            )}
+          </p>
           <p className="rounded-lg border border-zinc-800 p-4 text-zinc-300">{result.tasteProfile}</p>
           <ul className="space-y-6">
             {result.picks.map((p) => (

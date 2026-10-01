@@ -19,10 +19,14 @@ For setup to run it locally, see **[SETUP.md](SETUP.md)**. It lists every key an
 
 **CI/CD:** GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs lint, typecheck, tests and a production build on every push and pull request. Vercel deploys `main` through its Git integration.
 
+## Side Note
+- if you want to sign up through google accounts, provide me an email address to add as a test user since this is not a published app and is still in testing under google console!
+
 ## Assumptions and Overall Flow of things
 
 ### Films and ratings
 - Movies only (no TV).
+- A film's details are copied from TMDB the first time anyone adds it, and `movies.synced_at` records when. They aren't refreshed afterwards (titles and posters rarely change).
 - Ratings are whole numbers from 1 to 10, shown as a star and the number (★ 7/10).
 - One rating per member per film; editing replaces it, and rewatches aren't logged.
 - Watched and rated are separate: a film can be watched without a rating, and rating a film marks it watched. A review can't be saved without a rating; trying shows "Pick a rating from 1 to 10 before saving".
@@ -41,8 +45,9 @@ For setup to run it locally, see **[SETUP.md](SETUP.md)**. It lists every key an
 - Deleting an account deletes its lists, ratings and follows in both directions.
 
 ### Recommendations
-- The home page row is TMDB's recommendations for your best-rated watched films, minus anything already on your list. It uses no AI, so it's instant.
-- The taste profile is generated on demand (not cached). It needs at least one film from what's ticked in Settings > Preferences (watched films, the "to watch" list, or both).
+- The home page row is TMDB's recommendations for your best-rated watched films, minus anything already on your list. It uses no AI. The row is cached per member for up to an hour, and cleared the moment they add, remove or rate a film. The "watched by" friend markers on it aren't cached, so they're always current.
+- The taste profile needs at least one film from what's ticked in Settings > Preferences (watched films, the "to watch" list, or both).
+- Each member's latest taste profile is saved (`taste_profiles`) with a hash of everything Gemini was given: watched films, ratings and reviews, the "to watch" list, which films are already on the list, and the prompt. The page shows the saved profile when it opens, and generating again with none of that changed reuses it instead of calling Gemini. "Get new picks anyway" skips the saved one. A failed attempt isn't saved.
 - Gemini picks from up to 60 TMDB candidates related to your films. When you add a prompt (up to 300 characters), it may also name films outside those candidates that fit it better. Each of those is looked up on TMDB and dropped if it isn't found, so made-up films never appear; films already on your list are dropped too.
 - Gemini returns 5 to 8 picks, and the first 5 that survive are shown, each with a one-line reason that names a film from your history or watchlist. If most of them are dropped, fewer than 3 can appear.
 - Your prompt is treated as a preference, not as instructions to the model.

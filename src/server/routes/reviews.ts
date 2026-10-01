@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { reviews } from "@/db/schema";
 import { ensureMovie } from "@/lib/tmdb";
 import type { Env } from "@/server/env";
-import { saveToList } from "./watchlist";
+import { clearHomeRow, saveToList } from "./watchlist";
 
 const reviewSchema = z.object({
   rating: z
@@ -35,9 +35,10 @@ export const reviewRoutes = new Hono<Env>()
       .onConflictDoUpdate({ target: [reviews.userId, reviews.movieId], set: { ...values, updatedAt: sql`now()` } });
     return c.body(null, 204);
   })
-  // Deletes the rating only; the film stays watched.
+  // Deletes the rating only; the film stays watched. Ratings order the home row, so it's cleared.
   .delete("/:movieId{[0-9]{1,9}}", async (c) => {
     const movieId = Number(c.req.param("movieId"));
     await db.delete(reviews).where(and(eq(reviews.userId, c.get("userId")), eq(reviews.movieId, movieId)));
+    clearHomeRow(c.get("userId"));
     return c.body(null, 204);
   });
