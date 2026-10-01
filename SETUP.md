@@ -53,7 +53,7 @@ DIRECT_URL=postgresql://postgres.abcdefghijkl:PASSWORD@aws-0-eu-west-2.pooler.su
 npm run db:migrate
 ```
 
-This applies everything in [drizzle/](drizzle/): the tables, keys and indexes, the trigger that creates a profile on sign-up, and RLS. Check in Supabase → **Table Editor** that 7 tables exist.
+This applies everything in [drizzle/](drizzle/): the tables, keys and indexes, the trigger that creates a profile on sign-up, and RLS. Check in Supabase → **Table Editor** that 8 tables exist.
 
 **Then add the mock members:**
 

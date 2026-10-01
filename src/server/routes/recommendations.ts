@@ -2,11 +2,20 @@ import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import { APICallError, generateText, Output } from "ai";
 import { google } from "@ai-sdk/google";
-import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/db";
-import { movies, profiles, tasteProfiles, watchlist } from "@/db/schema";
-import { getCandidates, getWatchedHistory } from "@/lib/queries";
+import type { tasteProfiles } from "@/db/schema";
+import {
+  getCandidates,
+  getListIds,
+  getSavedTasteProfile,
+  getSettings,
+  getTasteGenerationsToday,
+  getToWatch,
+  getWatchedHistory,
+  returnTasteGeneration,
+  saveTasteProfile,
+  takeTasteGeneration,
+} from "@/lib/queries";
 import { tmdb, type TmdbMovie } from "@/lib/tmdb";
 import type { Env } from "@/server/env";
 
@@ -17,29 +26,36 @@ const bodySchema = z.object({ prompt: z.string().trim().max(300).optional(), ref
 // All four are on the API key's allowed list; new keys can't use the Gemini 2.x models.
 const MODELS = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"];
 
+// Gemini calls per member per day, so one member can't use up the shared free-tier quota.
+// Reusing a saved profile doesn't count.
+const DAILY_LIMIT = 2;
+
 export type Recommendations = {
   tasteProfile: string;
   picks: { movieId: number; title: string; posterPath: string | null; year: string; reason: string }[];
 };
 
-// What the page gets: the profile, the prompt it was made with, and whether it's a saved one.
+// What the page gets: the profile, the prompt it was made with, whether it's a saved one, and how
+// many of today's generations are used.
 export type TasteProfile = Recommendations & { prompt: string | null; generatedAt: string; cached: boolean };
+export type Usage = { used: number; limit: number };
 
-const savedProfile = (userId: string) => db.select().from(tasteProfiles).where(eq(tasteProfiles.userId, userId));
 const toResponse = (row: typeof tasteProfiles.$inferSelect, cached: boolean): TasteProfile => ({
   ...row.result,
   prompt: row.prompt,
   generatedAt: row.createdAt.toISOString(),
   cached,
 });
+const usage = (used: number): Usage => ({ used, limit: DAILY_LIMIT });
 
 // Hybrid approach: TMDB supplies real candidate films, Gemini picks from them and explains why.
 // The model can't invent films, because any pick that isn't a candidate is dropped.
 export const recommendationRoutes = new Hono<Env>()
-  // The saved profile, so the page can show it straight away. null if there isn't one yet.
+  // The saved profile (null if there isn't one yet), so the page can show it straight away.
   .get("/", async (c) => {
-    const [row] = await savedProfile(c.get("userId"));
-    return c.json(row ? toResponse(row, true) : null);
+    const userId = c.get("userId");
+    const [saved, used] = await Promise.all([getSavedTasteProfile(userId), getTasteGenerationsToday(userId)]);
+    return c.json({ profile: saved && toResponse(saved, true), usage: usage(used) });
   })
   .post("/", async (c) => {
     const parsed = bodySchema.safeParse(await c.req.json().catch(() => ({})));
@@ -47,23 +63,12 @@ export const recommendationRoutes = new Hono<Env>()
 
     // Settings > Preferences decides whether Gemini sees the watched films, the to-watch list, or both.
     const userId = c.get("userId");
-    const [prefs] = await db
-      .select({ watched: profiles.tasteUsesWatched, watchlist: profiles.tasteUsesWatchlist })
-      .from(profiles)
-      .where(eq(profiles.id, userId));
-    const [history, toWatch, onList, [saved]] = await Promise.all([
-      prefs.watched ? getWatchedHistory(userId) : [],
-      prefs.watchlist
-        ? db
-            .select({ movieId: movies.id, title: movies.title })
-            .from(watchlist)
-            .innerJoin(movies, eq(movies.id, watchlist.movieId))
-            .where(and(eq(watchlist.userId, userId), isNull(watchlist.watchedAt)))
-            .orderBy(desc(watchlist.addedAt))
-            .limit(40)
-        : [],
-      db.select({ movieId: watchlist.movieId }).from(watchlist).where(eq(watchlist.userId, userId)),
-      savedProfile(userId),
+    const prefs = await getSettings(userId);
+    const [history, toWatch, onList, saved] = await Promise.all([
+      prefs.tasteUsesWatched ? getWatchedHistory(userId) : [],
+      prefs.tasteUsesWatchlist ? getToWatch(userId) : [],
+      getListIds(userId),
+      getSavedTasteProfile(userId),
     ]);
     if (history.length === 0 && toWatch.length === 0) {
       return c.json({ error: "Nothing to go on yet. Add or watch a film, or check what's ticked in Settings > Preferences." }, 400);
@@ -76,18 +81,31 @@ export const recommendationRoutes = new Hono<Env>()
         JSON.stringify({
           history,
           toWatch,
-          onList: onList.map((r) => r.movieId).sort((a, b) => a - b),
+          onList: [...onList].sort((a, b) => a - b),
           prompt: parsed.data.prompt ?? null,
         }),
       )
       .digest("hex");
-    if (saved?.inputHash === inputHash && !parsed.data.refresh) return c.json(toResponse(saved, true));
+    if (saved?.inputHash === inputHash && !parsed.data.refresh) {
+      return c.json({ profile: toResponse(saved, true), usage: usage(await getTasteGenerationsToday(userId)) });
+    }
 
     const seeds = [...history.slice(0, 5), ...toWatch.slice(0, 3)].map((m) => m.movieId);
     const pool = (await getCandidates(userId, seeds)).slice(0, 60);
     // With a request, Gemini can go beyond the pool, so an empty pool only matters without one.
     if (pool.length === 0 && !parsed.data.prompt) {
       return c.json({ error: "No new films to suggest yet. Try watching something different." }, 404);
+    }
+
+    const used = await takeTasteGeneration(userId, DAILY_LIMIT);
+    if (used === null) {
+      return c.json(
+        {
+          error: `You've used today's ${DAILY_LIMIT} taste profile generations. They reset at midnight UTC; your saved profile is still here.`,
+          usage: usage(DAILY_LIMIT),
+        },
+        429,
+      );
     }
 
     const prompt = [
@@ -156,6 +174,7 @@ export const recommendationRoutes = new Hono<Env>()
       }
     }
     if (!output) {
+      await returnTasteGeneration(userId);
       const quotaUsed = errors.every((err) => APICallError.isInstance(err) && err.statusCode === 429);
       return quotaUsed
         ? c.json({ error: "The AI usage limit has been reached. Try again later." }, 429)
@@ -172,7 +191,7 @@ export const recommendationRoutes = new Hono<Env>()
       }),
     );
     // Up to 8 were requested as a buffer against drops, but the brief wants 3-5 shown.
-    const skip = new Set(onList.map((r) => r.movieId));
+    const skip = new Set(onList);
     const picks: Recommendations["picks"] = [];
     for (const [i, p] of output.picks.entries()) {
       if (picks.length === 5) break;
@@ -181,11 +200,11 @@ export const recommendationRoutes = new Hono<Env>()
       skip.add(m.id);
       picks.push({ movieId: m.id, title: m.title, posterPath: m.poster_path, year: m.release_date?.slice(0, 4) ?? "", reason: p.reason });
     }
-    const values = { inputHash, prompt: parsed.data.prompt ?? null, result: { tasteProfile: output.tasteProfile, picks }, createdAt: new Date() };
-    const [row] = await db
-      .insert(tasteProfiles)
-      .values({ userId, ...values })
-      .onConflictDoUpdate({ target: tasteProfiles.userId, set: values })
-      .returning();
-    return c.json(toResponse(row, false));
+    const row = await saveTasteProfile(userId, {
+      inputHash,
+      prompt: parsed.data.prompt ?? null,
+      result: { tasteProfile: output.tasteProfile, picks },
+      createdAt: new Date(),
+    });
+    return c.json({ profile: toResponse(row, false), usage: usage(used) });
   });

@@ -1,6 +1,6 @@
 {
-  "id": "d177d696-28d7-4c04-b717-5ca3cbe098d1",
-  "prevId": "6549a8b5-87f0-460a-a350-fbce940b6136",
+  "id": "60567733-51cf-42ff-928a-44713600ec4e",
+  "prevId": "50f8d8dd-1940-4911-a570-3024b8a60f12",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -19,6 +19,13 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "accepted": {
+          "name": "accepted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "created_at": {
           "name": "created_at",
@@ -40,37 +47,37 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         }
       },
       "foreignKeys": {
         "follows_follower_id_profiles_id_fk": {
           "name": "follows_follower_id_profiles_id_fk",
           "tableFrom": "follows",
+          "tableTo": "profiles",
           "columnsFrom": [
             "follower_id"
           ],
-          "tableTo": "profiles",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "follows_followee_id_profiles_id_fk": {
           "name": "follows_followee_id_profiles_id_fk",
           "tableFrom": "follows",
+          "tableTo": "profiles",
           "columnsFrom": [
             "followee_id"
           ],
-          "tableTo": "profiles",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -90,7 +97,7 @@
           "value": "\"follows\".\"follower_id\" <> \"follows\".\"followee_id\""
         }
       },
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.genres": {
       "name": "genres",
@@ -115,7 +122,7 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.movie_genres": {
       "name": "movie_genres",
@@ -139,28 +146,28 @@
         "movie_genres_movie_id_movies_id_fk": {
           "name": "movie_genres_movie_id_movies_id_fk",
           "tableFrom": "movie_genres",
+          "tableTo": "movies",
           "columnsFrom": [
             "movie_id"
           ],
-          "tableTo": "movies",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "movie_genres_genre_id_genres_id_fk": {
           "name": "movie_genres_genre_id_genres_id_fk",
           "tableFrom": "movie_genres",
+          "tableTo": "genres",
           "columnsFrom": [
             "genre_id"
           ],
-          "tableTo": "genres",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -175,7 +182,7 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.movies": {
       "name": "movies",
@@ -210,6 +217,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "synced_at": {
+          "name": "synced_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -218,7 +232,7 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.profiles": {
       "name": "profiles",
@@ -236,6 +250,46 @@
           "primaryKey": false,
           "notNull": false
         },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_private": {
+          "name": "is_private",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "taste_uses_watched": {
+          "name": "taste_uses_watched",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "taste_uses_watchlist": {
+          "name": "taste_uses_watchlist",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "taste_generations": {
+          "name": "taste_generations",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "taste_generations_on": {
+          "name": "taste_generations_on",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -249,26 +303,26 @@
         "profiles_id_users_id_fk": {
           "name": "profiles_id_users_id_fk",
           "tableFrom": "profiles",
+          "tableTo": "users",
+          "schemaTo": "auth",
           "columnsFrom": [
             "id"
           ],
-          "tableTo": "users",
-          "schemaTo": "auth",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "profiles_username_unique": {
           "name": "profiles_username_unique",
+          "nullsNotDistinct": false,
           "columns": [
             "username"
-          ],
-          "nullsNotDistinct": false
+          ]
         }
       },
       "policies": {},
@@ -278,59 +332,7 @@
           "value": "\"profiles\".\"username\" ~ '^[a-z0-9_]{3,20}$'"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.recommendation_cache": {
-      "name": "recommendation_cache",
-      "schema": "",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "history_hash": {
-          "name": "history_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "payload": {
-          "name": "payload",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "recommendation_cache_user_id_profiles_id_fk": {
-          "name": "recommendation_cache_user_id_profiles_id_fk",
-          "tableFrom": "recommendation_cache",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "tableTo": "profiles",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.reviews": {
       "name": "reviews",
@@ -367,12 +369,6 @@
           "notNull": true,
           "default": true
         },
-        "watched_on": {
-          "name": "watched_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -388,49 +384,22 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "reviews_movie_id_idx": {
-          "name": "reviews_movie_id_idx",
-          "columns": [
-            {
-              "expression": "movie_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "btree",
-          "concurrently": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
-        "reviews_user_id_profiles_id_fk": {
-          "name": "reviews_user_id_profiles_id_fk",
+        "reviews_user_id_movie_id_watchlist_user_id_movie_id_fk": {
+          "name": "reviews_user_id_movie_id_watchlist_user_id_movie_id_fk",
           "tableFrom": "reviews",
+          "tableTo": "watchlist",
           "columnsFrom": [
-            "user_id"
-          ],
-          "tableTo": "profiles",
-          "columnsTo": [
-            "id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
-        },
-        "reviews_movie_id_movies_id_fk": {
-          "name": "reviews_movie_id_movies_id_fk",
-          "tableFrom": "reviews",
-          "columnsFrom": [
+            "user_id",
             "movie_id"
           ],
-          "tableTo": "movies",
           "columnsTo": [
-            "id"
+            "user_id",
+            "movie_id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -447,10 +416,68 @@
       "checkConstraints": {
         "reviews_rating_range": {
           "name": "reviews_rating_range",
-          "value": "\"reviews\".\"rating\" between 1 and 5"
+          "value": "\"reviews\".\"rating\" between 1 and 10"
         }
       },
-      "isRLSEnabled": false
+      "isRLSEnabled": true
+    },
+    "public.taste_profiles": {
+      "name": "taste_profiles",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "input_hash": {
+          "name": "input_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prompt": {
+          "name": "prompt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "taste_profiles_user_id_profiles_id_fk": {
+          "name": "taste_profiles_user_id_profiles_id_fk",
+          "tableFrom": "taste_profiles",
+          "tableTo": "profiles",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
     },
     "public.watchlist": {
       "name": "watchlist",
@@ -474,35 +501,57 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "watched_at": {
+          "name": "watched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "watchlist_movie_id_idx": {
+          "name": "watchlist_movie_id_idx",
+          "columns": [
+            {
+              "expression": "movie_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "watchlist_user_id_profiles_id_fk": {
           "name": "watchlist_user_id_profiles_id_fk",
           "tableFrom": "watchlist",
+          "tableTo": "profiles",
           "columnsFrom": [
             "user_id"
           ],
-          "tableTo": "profiles",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "watchlist_movie_id_movies_id_fk": {
           "name": "watchlist_movie_id_movies_id_fk",
           "tableFrom": "watchlist",
+          "tableTo": "movies",
           "columnsFrom": [
             "movie_id"
           ],
-          "tableTo": "movies",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -517,15 +566,15 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     }
   },
   "enums": {},
   "schemas": {},
-  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

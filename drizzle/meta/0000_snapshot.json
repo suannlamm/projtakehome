@@ -1,5 +1,5 @@
 {
-  "id": "6549a8b5-87f0-460a-a350-fbce940b6136",
+  "id": "50f8d8dd-1940-4911-a570-3024b8a60f12",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -19,6 +19,13 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "accepted": {
+          "name": "accepted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "created_at": {
           "name": "created_at",
@@ -90,7 +97,7 @@
           "value": "\"follows\".\"follower_id\" <> \"follows\".\"followee_id\""
         }
       },
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.genres": {
       "name": "genres",
@@ -115,7 +122,7 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.movie_genres": {
       "name": "movie_genres",
@@ -175,7 +182,7 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.movies": {
       "name": "movies",
@@ -218,7 +225,7 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.profiles": {
       "name": "profiles",
@@ -235,6 +242,33 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_private": {
+          "name": "is_private",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "taste_uses_watched": {
+          "name": "taste_uses_watched",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "taste_uses_watchlist": {
+          "name": "taste_uses_watchlist",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "created_at": {
           "name": "created_at",
@@ -278,59 +312,7 @@
           "value": "\"profiles\".\"username\" ~ '^[a-z0-9_]{3,20}$'"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.recommendation_cache": {
-      "name": "recommendation_cache",
-      "schema": "",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "history_hash": {
-          "name": "history_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "payload": {
-          "name": "payload",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "recommendation_cache_user_id_profiles_id_fk": {
-          "name": "recommendation_cache_user_id_profiles_id_fk",
-          "tableFrom": "recommendation_cache",
-          "tableTo": "profiles",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.reviews": {
       "name": "reviews",
@@ -367,12 +349,6 @@
           "notNull": true,
           "default": true
         },
-        "watched_on": {
-          "name": "watched_on",
-          "type": "date",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -388,48 +364,21 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "reviews_movie_id_idx": {
-          "name": "reviews_movie_id_idx",
-          "columns": [
-            {
-              "expression": "movie_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
-        "reviews_user_id_profiles_id_fk": {
-          "name": "reviews_user_id_profiles_id_fk",
+        "reviews_user_id_movie_id_watchlist_user_id_movie_id_fk": {
+          "name": "reviews_user_id_movie_id_watchlist_user_id_movie_id_fk",
           "tableFrom": "reviews",
-          "tableTo": "profiles",
+          "tableTo": "watchlist",
           "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "reviews_movie_id_movies_id_fk": {
-          "name": "reviews_movie_id_movies_id_fk",
-          "tableFrom": "reviews",
-          "tableTo": "movies",
-          "columnsFrom": [
+            "user_id",
             "movie_id"
           ],
           "columnsTo": [
-            "id"
+            "user_id",
+            "movie_id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -447,10 +396,10 @@
       "checkConstraints": {
         "reviews_rating_range": {
           "name": "reviews_rating_range",
-          "value": "\"reviews\".\"rating\" between 1 and 5"
+          "value": "\"reviews\".\"rating\" between 1 and 10"
         }
       },
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     },
     "public.watchlist": {
       "name": "watchlist",
@@ -474,9 +423,31 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "watched_at": {
+          "name": "watched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "watchlist_movie_id_idx": {
+          "name": "watchlist_movie_id_idx",
+          "columns": [
+            {
+              "expression": "movie_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "watchlist_user_id_profiles_id_fk": {
           "name": "watchlist_user_id_profiles_id_fk",
@@ -517,7 +488,7 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
+      "isRLSEnabled": true
     }
   },
   "enums": {},

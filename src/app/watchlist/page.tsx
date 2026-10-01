@@ -1,27 +1,11 @@
-import { and, desc, eq, sql } from "drizzle-orm";
-import { db } from "@/db";
-import { movies, reviews, watchlist } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { getList } from "@/lib/queries";
 import { ListButtons, WatchedEntry } from "@/components/actions";
 import { MovieCard } from "@/components/ui";
 
 export default async function WatchlistPage() {
   const user = await requireUser();
-  const rows = await db
-    .select({
-      movieId: movies.id,
-      title: movies.title,
-      posterPath: movies.posterPath,
-      watchedAt: watchlist.watchedAt,
-      rating: reviews.rating,
-      body: reviews.body,
-      isPublic: reviews.isPublic,
-    })
-    .from(watchlist)
-    .innerJoin(movies, eq(movies.id, watchlist.movieId))
-    .leftJoin(reviews, and(eq(reviews.userId, watchlist.userId), eq(reviews.movieId, watchlist.movieId)))
-    .where(eq(watchlist.userId, user.id))
-    .orderBy(desc(sql`coalesce(${watchlist.watchedAt}, ${watchlist.addedAt})`));
+  const rows = await getList(user.id);
 
   const toWatch = rows.filter((r) => !r.watchedAt);
   const watched = rows.filter((r) => r.watchedAt);

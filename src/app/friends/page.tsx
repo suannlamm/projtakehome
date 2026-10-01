@@ -1,9 +1,6 @@
 import Link from "next/link";
-import { and, eq } from "drizzle-orm";
-import { db } from "@/db";
-import { follows, profiles } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { getFeed, searchUsers } from "@/lib/queries";
+import { getFeed, getFollowing, getFollowRequests, getSettings, searchUsers } from "@/lib/queries";
 import { FollowButton, RequestButtons } from "@/components/actions";
 import { Poster, Rating } from "@/components/ui";
 
@@ -13,22 +10,12 @@ export default async function FriendsPage({ searchParams }: { searchParams: Prom
   const q = params.q?.trim() ?? "";
 
   // People you follow, and requests to follow you (only a private account gets those).
-  const [feed, following, requests, found, [me]] = await Promise.all([
+  const [feed, following, requests, found, me] = await Promise.all([
     getFeed(user.id),
-    db
-      .select({ username: profiles.username, displayName: profiles.displayName })
-      .from(follows)
-      .innerJoin(profiles, eq(profiles.id, follows.followeeId))
-      .where(and(eq(follows.followerId, user.id), eq(follows.accepted, true)))
-      .orderBy(profiles.username),
-    db
-      .select({ username: profiles.username, displayName: profiles.displayName })
-      .from(follows)
-      .innerJoin(profiles, eq(profiles.id, follows.followerId))
-      .where(and(eq(follows.followeeId, user.id), eq(follows.accepted, false)))
-      .orderBy(follows.createdAt),
+    getFollowing(user.id),
+    getFollowRequests(user.id),
     q.length >= 2 ? searchUsers(q, user.id) : null,
-    db.select({ isPrivate: profiles.isPrivate }).from(profiles).where(eq(profiles.id, user.id)),
+    getSettings(user.id),
   ]);
   const showRequests = me.isPrivate && params.tab === "requests";
 

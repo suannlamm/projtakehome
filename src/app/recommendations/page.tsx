@@ -3,32 +3,37 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { TasteProfile } from "@/server/routes/recommendations";
+import type { TasteProfile, Usage } from "@/server/routes/recommendations";
 import { ListButtons } from "@/components/actions";
 import { MovieCard } from "@/components/ui";
 
-type Result = { status: "idle" | "loading" } | ({ status: "ok" } & TasteProfile) | { status: "error"; error: string };
-
 // Client-rendered so the page shows a loading state while TMDB + Gemini run (can take several seconds).
+// An error is shown above the last profile rather than replacing it.
 export default function TasteProfilePage() {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
-  const [result, setResult] = useState<Result>({ status: "idle" });
+  const [profile, setProfile] = useState<TasteProfile | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Shows the saved profile, if there is one, without calling Gemini.
+  // Shows the saved profile, if there is one, and today's usage, without calling Gemini.
   useEffect(() => {
     fetch("/api/recommendations")
       .then((res) => (res.ok ? res.json() : null))
-      .then((saved: TasteProfile | null) => {
-        if (!saved) return;
-        setPrompt(saved.prompt ?? "");
-        setResult((r) => (r.status === "idle" ? { status: "ok", ...saved } : r));
+      .then((data: { profile: TasteProfile | null; usage: Usage } | null) => {
+        if (!data) return;
+        setUsage(data.usage);
+        if (!data.profile) return;
+        setPrompt(data.profile.prompt ?? "");
+        setProfile((p) => p ?? data.profile);
       })
       .catch(() => {});
   }, []);
 
   async function generate(refresh = false) {
-    setResult({ status: "loading" });
+    setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/recommendations", {
         method: "POST",
@@ -37,9 +42,13 @@ export default function TasteProfilePage() {
       });
       if (res.status === 401) return router.push("/login");
       const data = await res.json();
-      setResult(res.ok ? { status: "ok", ...data } : { status: "error", error: data.error ?? "Something went wrong" });
+      if (data.usage) setUsage(data.usage);
+      if (res.ok) setProfile(data.profile);
+      else setError(data.error ?? "Something went wrong");
     } catch {
-      setResult({ status: "error", error: "Network error" });
+      setError("Network error");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -66,48 +75,57 @@ export default function TasteProfilePage() {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
         />
-        <button className="btn" disabled={result.status === "loading"}>
-          {result.status === "ok" ? "Regenerate" : "Generate"}
+        <button className="btn" disabled={loading}>
+          {profile ? "Regenerate" : "Generate"}
         </button>
       </form>
 
-      {result.status === "loading" && (
+      {error && <p className="text-red-400">{error}</p>}
+
+      {loading ? (
         <div className="space-y-4">
           <div className="h-16 animate-pulse rounded-lg bg-zinc-800" />
           <p className="text-sm text-zinc-400">Reading your watch history…</p>
         </div>
+      ) : (
+        profile && (
+          <>
+            <p className="text-sm text-zinc-400">
+              Generated {new Date(profile.generatedAt).toLocaleString()}.{" "}
+              {profile.cached && (
+                <>
+                  It&apos;s reused until your films, preferences or prompt change.{" "}
+                  <button className="text-amber-400 hover:underline" onClick={() => generate(true)}>
+                    Get new picks anyway
+                  </button>
+                </>
+              )}
+            </p>
+            <p className="rounded-lg border border-zinc-800 p-4 text-zinc-300">{profile.tasteProfile}</p>
+            <ul className="space-y-6">
+              {profile.picks.map((p) => (
+                <li key={p.movieId} className="flex gap-4">
+                  <div className="w-28 shrink-0">
+                    <MovieCard id={p.movieId} title={p.title} posterPath={p.posterPath} subtitle={p.year} />
+                  </div>
+                  <div className="space-y-3">
+                    <p className="text-sm text-zinc-300">{p.reason}</p>
+                    <ListButtons movieId={p.movieId} status={null} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )
       )}
 
-      {result.status === "error" && <p className="text-red-400">{result.error}</p>}
-
-      {result.status === "ok" && (
-        <>
-          <p className="text-sm text-zinc-400">
-            Generated {new Date(result.generatedAt).toLocaleString()}.{" "}
-            {result.cached && (
-              <>
-                It&apos;s reused until your films, preferences or prompt change.{" "}
-                <button className="text-amber-400 hover:underline" onClick={() => generate(true)}>
-                  Get new picks anyway
-                </button>
-              </>
-            )}
-          </p>
-          <p className="rounded-lg border border-zinc-800 p-4 text-zinc-300">{result.tasteProfile}</p>
-          <ul className="space-y-6">
-            {result.picks.map((p) => (
-              <li key={p.movieId} className="flex gap-4">
-                <div className="w-28 shrink-0">
-                  <MovieCard id={p.movieId} title={p.title} posterPath={p.posterPath} subtitle={p.year} />
-                </div>
-                <div className="space-y-3">
-                  <p className="text-sm text-zinc-300">{p.reason}</p>
-                  <ListButtons movieId={p.movieId} status={null} />
-                </div>
-              </li>
-            ))}
-          </ul>
-        </>
+      {usage && (
+        <p
+          className="fixed bottom-4 left-4 rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300"
+          title="Resets at midnight UTC. Showing a saved profile doesn't count."
+        >
+          Generations today: {usage.used}/{usage.limit}
+        </p>
       )}
     </div>
   );

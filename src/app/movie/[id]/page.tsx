@@ -1,10 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, eq } from "drizzle-orm";
-import { db } from "@/db";
-import { reviews, watchlist } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { getFeed } from "@/lib/queries";
+import { getFeed, getMyFilm } from "@/lib/queries";
 import { tmdb, type TmdbMovie } from "@/lib/tmdb";
 import { ListButtons, ReviewCard } from "@/components/actions";
 import { Poster, Rating } from "@/components/ui";
@@ -19,14 +16,7 @@ export default async function MoviePage({ params }: { params: Promise<{ id: stri
   const movie = await tmdb<TmdbMovie & { runtime: number | null }>(`/movie/${id}`);
   if (!movie) notFound();
 
-  const [[mine], friends] = await Promise.all([
-    db
-      .select({ watchedAt: watchlist.watchedAt, rating: reviews.rating, body: reviews.body, isPublic: reviews.isPublic })
-      .from(watchlist)
-      .leftJoin(reviews, and(eq(reviews.userId, watchlist.userId), eq(reviews.movieId, watchlist.movieId)))
-      .where(and(eq(watchlist.userId, user.id), eq(watchlist.movieId, id))),
-    getFeed(user.id, id),
-  ]);
+  const [mine, friends] = await Promise.all([getMyFilm(user.id, id), getFeed(user.id, id)]);
 
   return (
     <div className="space-y-8">

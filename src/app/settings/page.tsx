@@ -1,26 +1,13 @@
 import Link from "next/link";
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { profiles } from "@/db/schema";
 import { createClient, requireUser } from "@/lib/auth";
+import { getSettings } from "@/lib/queries";
 import { ProfileForm } from "@/components/actions";
 import { DeleteAccount, EmailForm, PasswordForm, SettingToggle } from "./forms";
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const user = await requireUser();
   const tab = (await searchParams).tab === "preferences" ? "preferences" : "account";
-  const [[profile], { data }] = await Promise.all([
-    db
-      .select({
-        displayName: profiles.displayName,
-        isPrivate: profiles.isPrivate,
-        tasteUsesWatched: profiles.tasteUsesWatched,
-        tasteUsesWatchlist: profiles.tasteUsesWatchlist,
-      })
-      .from(profiles)
-      .where(eq(profiles.id, user.id)),
-    (await createClient()).auth.getUser(),
-  ]);
+  const [profile, { data }] = await Promise.all([getSettings(user.id), (await createClient()).auth.getUser()]);
 
   return (
     <div className="mx-auto max-w-xl space-y-8">
