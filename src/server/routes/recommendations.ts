@@ -50,7 +50,7 @@ export const recommendationRoutes = new Hono<Env>().post("/", async (c) => {
   let output: { tasteProfile: string; picks: { tmdbId: number; reason: string }[] };
   try {
     ({ output } = await generateText({
-      model: google("gemini-3.8-flash"),
+      model: google("gemini-2.5-flash"),
       // One click = one request: retries burn the free tier's small per-minute and per-day quota.
       maxRetries: 0,
       output: Output.object({
