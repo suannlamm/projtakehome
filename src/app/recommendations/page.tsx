@@ -112,7 +112,7 @@ export default function TasteProfilePage() {
                   </div>
                   <div className="space-y-3">
                     <p className="text-sm text-zinc-300">{p.reason}</p>
-                    <ListButtons movieId={p.movieId} status={null} />
+                    <ListButtons movieId={p.movieId} status={p.status} />
                   </div>
                 </li>
               ))}

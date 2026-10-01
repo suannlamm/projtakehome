@@ -2,7 +2,7 @@ import { APICallError, LoadAPIKeyError } from "ai";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { authUsers } from "drizzle-orm/supabase";
 import { db } from "@/db";
-import { profiles, tasteProfiles } from "@/db/schema";
+import { movies, profiles, tasteProfiles, watchlist } from "@/db/schema";
 import { asUser } from "./helpers";
 
 // Gemini and TMDB are mocked, so these tests never use the real API or its quota. The database is
@@ -119,6 +119,20 @@ it("returns the saved profile, with the prompt it was made with, on GET", async 
   const { profile } = await (await post("GET", "/")).json();
   expect(profile).toMatchObject({ tasteProfile: reply.output.tasteProfile, prompt: "older than 2000", cached: true });
   expect(generateText).toHaveBeenCalledOnce();
+});
+
+it("shows a saved profile's picks with the member's current list status", async () => {
+  generateText.mockResolvedValue(reply);
+  await generate();
+  await db.insert(movies).values({ id: 2, title: "Film 2" }).onConflictDoNothing();
+  await db.insert(watchlist).values({ userId, movieId: 2 });
+
+  const { profile } = await (await post("GET", "/")).json();
+  expect(profile.picks.map((p: { movieId: number; status: string | null }) => [p.movieId, p.status])).toEqual([
+    [2, "to_watch"],
+    [10681, null],
+  ]);
+  await db.delete(watchlist);
 });
 
 describe("Gemini errors", () => {

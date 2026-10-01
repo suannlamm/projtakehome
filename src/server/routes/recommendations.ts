@@ -7,6 +7,7 @@ import type { tasteProfiles } from "@/db/schema";
 import {
   getCandidates,
   getListIds,
+  getPosterInfo,
   getSavedTasteProfile,
   getSettings,
   getTasteGenerationsToday,
@@ -15,6 +16,7 @@ import {
   returnTasteGeneration,
   saveTasteProfile,
   takeTasteGeneration,
+  type Status,
 } from "@/lib/queries";
 import { tmdb, type TmdbMovie } from "@/lib/tmdb";
 import type { Env } from "@/server/env";
@@ -61,16 +63,27 @@ export type Recommendations = {
 };
 
 // What the page gets: the profile, the prompt it was made with, whether it's a saved one, and how
-// many of today's generations are used.
-export type TasteProfile = Recommendations & { prompt: string | null; generatedAt: string; cached: boolean };
+// many of today's generations are used. Each pick carries the viewer's current list status, looked
+// up when it's shown, since a saved profile can outlive the list it was made from.
+export type TasteProfile = {
+  tasteProfile: string;
+  picks: (Recommendations["picks"][number] & { status: Status })[];
+  prompt: string | null;
+  generatedAt: string;
+  cached: boolean;
+};
 export type Usage = { used: number; limit: number };
 
-const toResponse = (row: typeof tasteProfiles.$inferSelect, cached: boolean): TasteProfile => ({
-  ...row.result,
-  prompt: row.prompt,
-  generatedAt: row.createdAt.toISOString(),
-  cached,
-});
+async function toResponse(userId: string, row: typeof tasteProfiles.$inferSelect, cached: boolean): Promise<TasteProfile> {
+  const info = await getPosterInfo(userId, row.result.picks.map((p) => p.movieId));
+  return {
+    tasteProfile: row.result.tasteProfile,
+    picks: row.result.picks.map((p) => ({ ...p, status: info.get(p.movieId)?.status ?? null })),
+    prompt: row.prompt,
+    generatedAt: row.createdAt.toISOString(),
+    cached,
+  };
+}
 const usage = (used: number): Usage => ({ used, limit: DAILY_LIMIT });
 
 // Hybrid approach: TMDB supplies real candidate films, Gemini picks from them and explains why.
@@ -80,7 +93,7 @@ export const recommendationRoutes = new Hono<Env>()
   .get("/", async (c) => {
     const userId = c.get("userId");
     const [saved, used] = await Promise.all([getSavedTasteProfile(userId), getTasteGenerationsToday(userId)]);
-    return c.json({ profile: saved && toResponse(saved, true), usage: usage(used) });
+    return c.json({ profile: saved && (await toResponse(userId, saved, true)), usage: usage(used) });
   })
   .post("/", async (c) => {
     const parsed = bodySchema.safeParse(await c.req.json().catch(() => ({})));
@@ -112,7 +125,8 @@ export const recommendationRoutes = new Hono<Env>()
       )
       .digest("hex");
     if (saved?.inputHash === inputHash && !parsed.data.refresh) {
-      return c.json({ profile: toResponse(saved, true), usage: usage(await getTasteGenerationsToday(userId)) });
+      const [profile, used] = await Promise.all([toResponse(userId, saved, true), getTasteGenerationsToday(userId)]);
+      return c.json({ profile, usage: usage(used) });
     }
 
     const seeds = [...history.slice(0, 5), ...toWatch.slice(0, 3)].map((m) => m.movieId);
@@ -242,7 +256,7 @@ export const recommendationRoutes = new Hono<Env>()
         createdAt: new Date(),
       });
       stored = true;
-      return c.json({ profile: toResponse(row, false), usage: usage(used) });
+      return c.json({ profile: await toResponse(userId, row, false), usage: usage(used) });
     } finally {
       if (!stored) await returnTasteGeneration(userId);
     }

@@ -32,6 +32,12 @@ test.describe("signed out", () => {
     await expect(page.getByText("There's already an account associated with that email.")).toBeVisible();
   });
 
+  test("a failed sign-in link explains itself instead of showing a blank form", async ({ page }) => {
+    await page.goto("/auth/callback?code=not-a-real-code");
+    await expect(page).toHaveURL(/\/login\?error=auth$/);
+    await expect(page.getByText("That sign-in link didn't work.")).toBeVisible();
+  });
+
   test("the API refuses every request with 401", async ({ request }) => {
     expect((await request.get("/api/feed")).status()).toBe(401);
   });

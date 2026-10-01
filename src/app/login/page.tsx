@@ -1,18 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 
-export default function LoginPage() {
+// /auth/callback sends people here with ?error=auth when a Google sign-in or email link fails.
+export default function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const router = useRouter();
+  const { error: callbackError } = use(searchParams);
   const [supabase] = useState(() =>
     createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!),
   );
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [message, setMessage] = useState<{ text: string; error: boolean } | null>(
+    callbackError === "auth"
+      ? { text: "That sign-in link didn't work. It may have expired or already been used. Sign in again below.", error: true }
+      : null,
+  );
   const [busy, setBusy] = useState(false);
 
   const showError = (error: { code?: string; message: string }) =>
