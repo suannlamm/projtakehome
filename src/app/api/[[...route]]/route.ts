@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { getUserId } from "@/lib/auth";
 import type { Env } from "@/server/env";
 import { feedRoutes } from "@/server/routes/feed";
-import { followRoutes } from "@/server/routes/follows";
+import { followerRoutes, followRoutes } from "@/server/routes/follows";
 import { profileRoutes } from "@/server/routes/profile";
 import { recommendationRoutes } from "@/server/routes/recommendations";
 import { reviewRoutes } from "@/server/routes/reviews";
@@ -34,6 +34,7 @@ app.use("*", async (c, next) => {
 app.route("/watchlist", watchlistRoutes);
 app.route("/reviews", reviewRoutes);
 app.route("/follows", followRoutes);
+app.route("/followers", followerRoutes);
 app.route("/users", userRoutes);
 app.route("/feed", feedRoutes);
 app.route("/profile", profileRoutes);

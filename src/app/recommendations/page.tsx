@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Recommendations } from "@/server/routes/recommendations";
 import { ListButtons } from "@/components/actions";
@@ -32,7 +33,13 @@ export default function TasteProfilePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Your taste profile</h1>
+      <div>
+        <h1 className="text-2xl font-bold">Your taste profile</h1>
+        <p className="mt-1 text-sm text-zinc-400">
+          Choose what Gemini looks at in{" "}
+          <Link href="/settings?tab=preferences" className="text-amber-400">Settings &gt; Preferences</Link>.
+        </p>
+      </div>
       <form
         className="space-y-3"
         onSubmit={(e) => {

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Lock } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { getProfile } from "@/lib/queries";
 import { FollowButton } from "@/components/actions";
-import { Poster, Stars, StatsPanel } from "@/components/ui";
+import { Poster, Rating, StatsPanel } from "@/components/ui";
 
 export default async function ProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const user = await requireUser();
@@ -14,17 +15,26 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
     <div className="space-y-10">
       <header className="flex flex-wrap items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold">{profile.displayName ?? `@${profile.username}`}</h1>
+          <h1 className="flex items-center gap-2 text-3xl font-bold">
+            {profile.displayName ?? `@${profile.username}`}
+            {profile.isPrivate && <Lock size={20} className="text-zinc-500" aria-label="Private account" />}
+          </h1>
           {profile.displayName && <p className="text-zinc-400">@{profile.username}</p>}
         </div>
         <p className="text-sm text-zinc-400">
           {profile.followers} followers · {profile.following} following
         </p>
-        {!profile.isOwner && <FollowButton username={profile.username} isFollowing={profile.isFollowing} />}
+        {!profile.isOwner && <FollowButton username={profile.username} status={profile.followStatus} />}
       </header>
 
       {!profile.canView ? (
-        <p className="text-zinc-400">Follow @{profile.username} to see what they've watched.</p>
+        <p className="text-zinc-400">
+          {profile.followStatus === "requested"
+            ? `Request sent. You'll see what @${profile.username} has watched once they accept.`
+            : profile.isPrivate
+              ? `This account is private. Send @${profile.username} a follow request to see what they've watched.`
+              : `Follow @${profile.username} to see what they've watched.`}
+        </p>
       ) : (
         <>
           <StatsPanel stats={profile.stats} />
@@ -43,7 +53,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
                     <div className="min-w-0 flex-1">
                       <p className="text-sm">
                         <Link href={`/movie/${w.movieId}`} className="font-semibold hover:text-amber-400">{w.title}</Link>{" "}
-                        {w.rating && <Stars rating={w.rating} />}
+                        {w.rating && <Rating rating={w.rating} />}
                         {w.isPublic === false && (
                           <span className="ml-2 rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300">Private</span>
                         )}

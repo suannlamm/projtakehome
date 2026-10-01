@@ -13,8 +13,15 @@ const reviewOf = (publicOnly: boolean) =>
     publicOnly ? eq(reviews.isPublic, true) : undefined,
   );
 
-const isFollowedBy = (viewerId: string) =>
-  sql<boolean>`exists(select 1 from ${follows} where ${follows.followerId} = ${viewerId} and ${follows.followeeId} = ${profiles.id})`;
+// Only an accepted follow counts. A pending one is a request to a private account.
+const followsAccepted = (viewerId: string) =>
+  and(eq(follows.followerId, viewerId), eq(follows.followeeId, watchlist.userId), eq(follows.accepted, true));
+
+export type FollowStatus = "following" | "requested" | null;
+
+const followStatus = (viewerId: string) =>
+  sql<FollowStatus>`(select case when ${follows.accepted} then 'following' else 'requested' end
+    from ${follows} where ${follows.followerId} = ${viewerId} and ${follows.followeeId} = ${profiles.id})`;
 
 // Used by /stats and member profiles.
 export async function getStats(userId: string, includePrivate: boolean) {
@@ -42,16 +49,17 @@ export async function getStats(userId: string, includePrivate: boolean) {
 }
 
 // Used by the profile page and GET /api/users/:username.
-// Anyone can see a member's handle and follow counts; their films and stats need a follow.
+// Anyone can see a member's handle and follow counts; their films and stats need an accepted follow.
 export async function getProfile(username: string, viewerId: string) {
   const [profile] = await db
     .select({
       id: profiles.id,
       username: profiles.username,
       displayName: profiles.displayName,
-      followers: sql<number>`(select count(*) from ${follows} where ${follows.followeeId} = ${profiles.id})`.mapWith(Number),
-      following: sql<number>`(select count(*) from ${follows} where ${follows.followerId} = ${profiles.id})`.mapWith(Number),
-      isFollowing: isFollowedBy(viewerId),
+      isPrivate: profiles.isPrivate,
+      followers: sql<number>`(select count(*) from ${follows} where ${follows.followeeId} = ${profiles.id} and ${follows.accepted})`.mapWith(Number),
+      following: sql<number>`(select count(*) from ${follows} where ${follows.followerId} = ${profiles.id} and ${follows.accepted})`.mapWith(Number),
+      followStatus: followStatus(viewerId),
     })
     .from(profiles)
     .where(eq(profiles.username, username.toLowerCase()));
@@ -59,7 +67,7 @@ export async function getProfile(username: string, viewerId: string) {
 
   const { id, ...header } = profile;
   const member = { ...header, username: header.username!, isOwner: id === viewerId };
-  if (!member.isOwner && !member.isFollowing) return { ...member, canView: false as const };
+  if (!member.isOwner && member.followStatus !== "following") return { ...member, canView: false as const };
 
   const [stats, watched] = await Promise.all([
     getStats(id, member.isOwner),
@@ -98,7 +106,7 @@ export async function getFeed(viewerId: string, movieId?: number) {
       at: at.mapWith(watchlist.watchedAt),
     })
     .from(watchlist)
-    .innerJoin(follows, and(eq(follows.followeeId, watchlist.userId), eq(follows.followerId, viewerId)))
+    .innerJoin(follows, followsAccepted(viewerId))
     .innerJoin(profiles, eq(profiles.id, watchlist.userId))
     .innerJoin(movies, eq(movies.id, watchlist.movieId))
     .leftJoin(reviews, reviewOf(true))
@@ -111,7 +119,7 @@ export async function getFeed(viewerId: string, movieId?: number) {
 export async function searchUsers(q: string, viewerId: string) {
   const pattern = `%${q.trim().replace(/[\\%_]/g, "\\$&")}%`;
   return db
-    .select({ username: profiles.username, displayName: profiles.displayName, isFollowing: isFollowedBy(viewerId) })
+    .select({ username: profiles.username, displayName: profiles.displayName, followStatus: followStatus(viewerId) })
     .from(profiles)
     .where(
       and(
@@ -172,7 +180,7 @@ export async function getPosterInfo(viewerId: string, movieIds: number[]) {
     })
     .from(watchlist)
     .innerJoin(profiles, eq(profiles.id, watchlist.userId))
-    .leftJoin(follows, and(eq(follows.followeeId, watchlist.userId), eq(follows.followerId, viewerId)))
+    .leftJoin(follows, followsAccepted(viewerId))
     .where(
       and(
         inArray(watchlist.movieId, movieIds),

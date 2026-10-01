@@ -6,8 +6,8 @@ import { reviews, watchlist } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { getFeed } from "@/lib/queries";
 import { tmdb, type TmdbMovie } from "@/lib/tmdb";
-import { ListButtons, ReviewForm } from "@/components/actions";
-import { Poster, Stars } from "@/components/ui";
+import { ListButtons, ReviewCard } from "@/components/actions";
+import { Poster, Rating } from "@/components/ui";
 
 export default async function MoviePage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -47,7 +47,7 @@ export default async function MoviePage({ params }: { params: Promise<{ id: stri
         </div>
       </div>
 
-      <ReviewForm
+      <ReviewCard
         movieId={id}
         existing={mine?.rating ? { rating: mine.rating, body: mine.body, isPublic: mine.isPublic ?? true } : null}
       />
@@ -64,7 +64,7 @@ export default async function MoviePage({ params }: { params: Promise<{ id: stri
                   <Link href={`/u/${f.username}`} className="font-semibold hover:text-amber-400">
                     {f.displayName ?? `@${f.username}`}
                   </Link>{" "}
-                  {f.rating ? <Stars rating={f.rating} /> : <span className="text-zinc-500">watched</span>}
+                  {f.rating ? <Rating rating={f.rating} /> : <span className="text-zinc-500">watched</span>}
                 </p>
                 {f.body && <p className="mt-2 whitespace-pre-line text-sm text-zinc-300">{f.body}</p>}
               </li>

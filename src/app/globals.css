@@ -16,6 +16,15 @@ body {
   @apply rounded-md border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800 disabled:opacity-50;
 }
 
+/* Nav links and page tabs; the current one is highlighted so you can see where you are. */
+.tab {
+  @apply flex items-center gap-1.5 rounded-md px-2 py-1 hover:text-amber-400;
+}
+
+.tab-active {
+  @apply bg-yellow-100 text-zinc-900 hover:text-zinc-900;
+}
+
 .input {
   @apply w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-amber-500;
 }

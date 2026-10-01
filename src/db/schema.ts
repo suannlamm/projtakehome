@@ -19,12 +19,16 @@ const createdAt = () => timestamp("created_at", { withTimezone: true }).notNull(
 
 // One row per Supabase auth user, created by the on_auth_user_created trigger.
 // username (the public handle) stays null until the user picks one on /onboarding.
+// A private account has to accept each follow request. The taste_uses_* flags pick what Gemini sees.
 export const profiles = pgTable(
   "profiles",
   {
     id: uuid("id").primaryKey().references(() => authUsers.id, { onDelete: "cascade" }),
     username: text("username").unique(),
     displayName: text("display_name"),
+    isPrivate: boolean("is_private").notNull().default(false),
+    tasteUsesWatched: boolean("taste_uses_watched").notNull().default(true),
+    tasteUsesWatchlist: boolean("taste_uses_watchlist").notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => [check("profiles_username_format", sql`${t.username} ~ '^[a-z0-9_]{3,20}$'`)],
@@ -88,11 +92,13 @@ export const reviews = pgTable(
   ],
 );
 
+// accepted is false while a follow of a private account is still a request.
 export const follows = pgTable(
   "follows",
   {
     followerId: uuid("follower_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
     followeeId: uuid("followee_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+    accepted: boolean("accepted").notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => [

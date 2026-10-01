@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Star } from "lucide-react";
 
 // Presentational pieces shared by server pages and the client taste profile page.
 
@@ -49,12 +50,13 @@ export function MovieCard({
   );
 }
 
-// Ratings are stored 1-10 and shown as half-stars, Letterboxd-style: 7 → ★★★½.
-export function Stars({ rating }: { rating: number }) {
+// A 1-10 rating as one star and the number: ★ 7/10.
+export function Rating({ rating }: { rating: number }) {
   return (
-    <span className="text-amber-400" aria-label={`${rating} out of 10`} title={`${rating}/10`}>
-      {"★".repeat(Math.floor(rating / 2))}
-      {rating % 2 ? "½" : ""}
+    <span className="inline-flex items-center gap-1 text-amber-400" aria-label={`${rating} out of 10`}>
+      <Star size={14} fill="currentColor" />
+      {rating}
+      <span className="text-xs text-zinc-500">/10</span>
     </span>
   );
 }

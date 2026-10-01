@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { APICallError, generateText, Output } from "ai";
 import { google } from "@ai-sdk/google";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
+import { db } from "@/db";
+import { movies, profiles, watchlist } from "@/db/schema";
 import { getCandidates, getWatchedHistory } from "@/lib/queries";
 import type { Env } from "@/server/env";
 
@@ -18,11 +21,30 @@ export const recommendationRoutes = new Hono<Env>().post("/", async (c) => {
   const parsed = bodySchema.safeParse(await c.req.json().catch(() => ({})));
   if (!parsed.success) return c.json({ error: "Prompt must be 300 characters or fewer" }, 400);
 
+  // Settings > Preferences decides whether Gemini sees the watched films, the to-watch list, or both.
   const userId = c.get("userId");
-  const history = await getWatchedHistory(userId);
-  if (history.length === 0) return c.json({ error: "Watch at least one film first" }, 400);
+  const [prefs] = await db
+    .select({ watched: profiles.tasteUsesWatched, watchlist: profiles.tasteUsesWatchlist })
+    .from(profiles)
+    .where(eq(profiles.id, userId));
+  const [history, toWatch] = await Promise.all([
+    prefs.watched ? getWatchedHistory(userId) : [],
+    prefs.watchlist
+      ? db
+          .select({ movieId: movies.id, title: movies.title })
+          .from(watchlist)
+          .innerJoin(movies, eq(movies.id, watchlist.movieId))
+          .where(and(eq(watchlist.userId, userId), isNull(watchlist.watchedAt)))
+          .orderBy(desc(watchlist.addedAt))
+          .limit(40)
+      : [],
+  ]);
+  if (history.length === 0 && toWatch.length === 0) {
+    return c.json({ error: "Nothing to go on yet. Add or watch a film, or check what's ticked in Settings > Preferences." }, 400);
+  }
 
-  const pool = (await getCandidates(userId, history.slice(0, 5).map((h) => h.movieId))).slice(0, 25);
+  const seeds = [...history.slice(0, 5), ...toWatch.slice(0, 3)].map((m) => m.movieId);
+  const pool = (await getCandidates(userId, seeds)).slice(0, 25);
   if (pool.length === 0) return c.json({ error: "No new films to suggest yet. Try watching something different." }, 404);
 
   let output: { tasteProfile: string; picks: { tmdbId: number; reason: string }[] };
@@ -41,11 +63,19 @@ export const recommendationRoutes = new Hono<Env>().post("/", async (c) => {
         }),
       }),
       prompt: [
-        "You are a film recommender. Here is the user's watch history (ratings are out of 10):",
-        ...history
-          .slice(0, 40)
-          .map((h) => `- ${h.title}: ${h.rating ? `${h.rating}/10` : "not rated"}${h.body ? ` - "${h.body.slice(0, 200)}"` : ""}`),
-        "",
+        "You are a film recommender.",
+        ...(history.length
+          ? [
+              "Here is the user's watch history (ratings are out of 10):",
+              ...history
+                .slice(0, 40)
+                .map((h) => `- ${h.title}: ${h.rating ? `${h.rating}/10` : "not rated"}${h.body ? ` - "${h.body.slice(0, 200)}"` : ""}`),
+              "",
+            ]
+          : []),
+        ...(toWatch.length
+          ? ["Films on their watchlist that they want to see but haven't yet:", ...toWatch.map((t) => `- ${t.title}`), ""]
+          : []),
         "Choose 3 to 5 films ONLY from these candidates (use the exact id):",
         ...pool.map((m) => `- id ${m.id}: ${m.title} (${m.release_date?.slice(0, 4) || "n/a"}) - ${m.overview.slice(0, 200)}`),
         "",
@@ -56,7 +86,7 @@ export const recommendationRoutes = new Hono<Env>().post("/", async (c) => {
               "",
             ]
           : []),
-        "Write a short taste profile derived from their ratings, then give each pick a one-line reason that names specific films from their history.",
+        "Write a short taste profile derived from this, then give each pick a one-line reason that names specific films from their history or watchlist.",
       ].join("\n"),
     }));
   } catch (err) {

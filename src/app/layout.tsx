@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
-import { NavLinks } from "@/components/actions";
+import { NavLinks, UserMenu } from "@/components/actions";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,10 +22,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </Link>
             {user ? (
               <>
-                <NavLinks username={user.username} />
-                <form action="/auth/signout" method="post" className="ml-auto">
-                  <button className="text-zinc-400 hover:text-zinc-100">Sign out</button>
-                </form>
+                <NavLinks />
+                <UserMenu username={user.username} />
               </>
             ) : (
               <Link href="/login" className="btn ml-auto">Sign in</Link>
